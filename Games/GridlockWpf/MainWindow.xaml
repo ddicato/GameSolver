@@ -1,0 +1,17 @@
+﻿<Window x:Class="GridlockWpf.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="Gridlock" Height="300" Width="300">
+    <Grid>
+        <TextBox Margin="12,12,106,90" Name="mainBox" IsReadOnly="True" FontFamily="Lucida Console" FontSize="16" />
+        <TextBox Margin="0,12,12,117" Name="statusBox" HorizontalAlignment="Right" Width="88" IsReadOnly="True" />
+        <Button Height="23" Margin="52,0,0,20" Name="solveButton" VerticalAlignment="Bottom" HorizontalAlignment="Left" Width="81" IsEnabled="False" Click="solveButton_Click">Solve</Button>
+        <Button Height="23" Margin="81,0,0,61" Name="playButton" VerticalAlignment="Bottom" HorizontalAlignment="Left" Width="23" IsEnabled="False" Click="playButton_Click">&gt;&gt;</Button>
+        <Button Height="23" Margin="110,0,0,61" Name="nextButton" VerticalAlignment="Bottom" HorizontalAlignment="Left" Width="23" IsEnabled="False" Click="nextButton_Click">&gt;</Button>
+        <Button Height="23" Margin="52,0,0,61" Name="prevButton" VerticalAlignment="Bottom" HorizontalAlignment="Left" Width="23" IsEnabled="False" Click="prevButton_Click">&lt;</Button>
+        <Button Height="23" Margin="139,0,0,61" Name="lastButton" VerticalAlignment="Bottom" IsEnabled="False" HorizontalAlignment="Left" Width="23" Click="lastButton_Click">&gt;|</Button>
+        <Button Height="23" Margin="23,0,0,61" Name="firstButton" VerticalAlignment="Bottom" HorizontalAlignment="Left" Width="23" IsEnabled="False" Click="firstButton_Click">|&lt;</Button>
+        <TextBox Height="21" HorizontalAlignment="Right" Margin="0,0,12,90" Name="levelBox" VerticalAlignment="Bottom" Width="88" />
+        <Button Height="23" HorizontalAlignment="Right" Margin="0,0,12,61" Name="levelButton" VerticalAlignment="Bottom" Width="88" Click="levelButton_Click">Go to Level</Button>
+    </Grid>
+</Window>
