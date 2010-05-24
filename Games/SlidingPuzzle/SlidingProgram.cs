@@ -8,11 +8,11 @@ namespace SlidingPuzzle {
     class SlidingProgram {
         static void Main(string[] args) {
 
-            var solver = new SinglePlayerSolver<SlidingNode>(SlidingNode.Comparator);
             DateTime progStart = DateTime.Now;
 
             SlidingNode game = PuzzleReader.Read(@"..\..\Games\SlidingPuzzle\data\sliding.puzzle");
-
+            var solver = new SinglePlayerSolver<SlidingNode>(game.Comparator);
+            
             if (game == null) {
                 Console.WriteLine("No game");
                 return;

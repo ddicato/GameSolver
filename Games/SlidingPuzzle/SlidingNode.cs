@@ -6,7 +6,7 @@ using System.Text;
 using Solver;
 
 namespace SlidingPuzzle {
-    class SlidingNode : HashableNode<SlidingNode> {
+    class SlidingNode : Node<SlidingNode> {
 
         private int[,] board;
 
@@ -222,9 +222,17 @@ namespace SlidingPuzzle {
             return hash;
         }
 
-        public static readonly new IEqualityComparer<SlidingNode> Comparator = new SlidingNodeComparer();
+        public override IEqualityComparer<SlidingNode> Comparator {
+            get {
+                return SlidingNodeComparer.Instance;
+            }
+        }
 
         public class SlidingNodeComparer : IEqualityComparer<SlidingNode> {
+
+            private SlidingNodeComparer() { }
+
+            public static readonly SlidingNodeComparer Instance = new SlidingNodeComparer();
 
             #region IEqualityComparer<SlidingNode> Members
 

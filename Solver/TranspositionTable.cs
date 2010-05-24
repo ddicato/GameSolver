@@ -5,7 +5,7 @@ using System.Linq;
 using System.Text;
 
 namespace Solver {
-    public class TranspositionTable<T> where T : HashableNode<T> {
+    public class TranspositionTable<T> where T : Node<T> {
         private readonly Dictionary<T, TableEntry> _dict;
         
         public TranspositionTable(IEqualityComparer<T> Comparator) {
@@ -46,30 +46,17 @@ namespace Solver {
         /// Inserts the specified node into the transposition table if its
         /// depth is lower than the current entry (if any). Returns true
         /// if the table was updated.
+        /// Read-only operations are executed lock-free.
         /// </summary>
         public bool Insert(T node, int maxPly, int ply, bool pending) {
             if (pending) {
                 // node is partially searched - override entries that exist lower
                 // in the tree
                 TableEntry entry;
-                // TODO: if (!_dict.Try() && (entry.Pending && (>, ==)))
-                if (_dict.TryGetValue(node, out entry)) {
-                    // read-only case is lock-free
-                    if (entry.Pending) {
-                        if (entry.Ply > ply ||
-                            entry.Ply == ply && entry.MaxPly < maxPly) {
-                            lock (_dict) {
-                                _dict[node] = new TableEntry(maxPly, ply, pending);
-                                return true;
-                            }
-                        }
-                        // TODO: remove
-                        // semantically, the entry is replaced, but there's no
-                        // need to do so explicitly because the contents are
-                        // identical
-                        //return entry.Key == ply;
-                    }
-                } else {
+                if (!_dict.TryGetValue(node, out entry) ||
+                    (entry.Pending &&
+                     (entry.Ply > ply ||
+                      entry.Ply == ply && entry.MaxPly < maxPly))) {
                     lock (_dict) {
                         _dict[node] = new TableEntry(maxPly, ply, pending);
                         return true;
@@ -78,22 +65,9 @@ namespace Solver {
             } else {
                 // node is proven unsolvable - override any pending entries
                 TableEntry entry;
-                // TODO: if (!_dict.Try() && (entry.Pending && (>, ==)))
-                if (_dict.TryGetValue(node, out entry)) {
-                    // read-only case is lock-free
-                    if (entry.Ply > ply ||
-                        entry.Ply == ply && ply == entry.MaxPly && entry.MaxPly < maxPly) {
-                        lock (_dict) {
-                            _dict[node] = new TableEntry(maxPly, ply, pending);
-                            return true;
-                        }
-                    }
-                    // TODO: remove
-                    // semantically, the entry is replaced, but there's no
-                    // need to do so explicitly because the contents are
-                    // identical
-                    //return entry.Key == ply;
-                } else {
+                if (!_dict.TryGetValue(node, out entry) ||
+                    entry.Ply > ply ||
+                    entry.Ply == ply && ply == entry.MaxPly && entry.MaxPly < maxPly) {
                     lock (_dict) {
                         _dict[node] = new TableEntry(maxPly, ply, pending);
                         return true;

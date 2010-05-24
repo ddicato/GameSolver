@@ -6,7 +6,7 @@ using System.Text;
 using System.Threading;
 
 namespace Solver {
-    public struct SolverResult<T> where T : HashableNode<T> {
+    public struct SolverResult<T> where T : Node<T> {
         public readonly bool Winning;
         public readonly List<T> Solution;
         public readonly int Depth;
@@ -20,7 +20,7 @@ namespace Solver {
         }
     }
 
-    public class SinglePlayerSolver<T> where T : HashableNode<T> {
+    public class SinglePlayerSolver<T> where T : Node<T> {
         private static readonly int ProcCount = Environment.ProcessorCount;
         private static readonly List<T> Unsolvable = null;
         private static readonly List<T> EmptySolution = new List<T>();
@@ -37,16 +37,13 @@ namespace Solver {
 
         public SinglePlayerSolver(IEqualityComparer<T> comparator) {
             _comparator = comparator;
-            // TODO: call ResetStats instead?
-            _nodes = 0;
-            _hits = 0;
             _table = new TranspositionTable<T>(comparator);
+            ResetStats();
         }
 
         private void ResetStats() {
             _nodes = 0;
             _hits = 0;
-            //_table.Clear();
         }
 
         public int Nodes {
@@ -137,9 +134,9 @@ namespace Solver {
             }
 
             // Move ordering
-            if (ply < maxPly - 2) { // TODO: tune param
+            if (ply < maxPly - 2 && node is OrderedNode<T>) { // TODO: tune param
                 if (children.Count > 1) {
-                    children.Sort(node.CompareMoves);
+                    children.Sort(((OrderedNode<T>)(object)node).CompareMoves);
                 }
             }
 

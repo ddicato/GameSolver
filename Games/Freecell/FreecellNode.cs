@@ -7,7 +7,7 @@ using System.Text;
 using Solver;
 
 namespace Freecell {
-    public class FreecellNode : HashableNode<FreecellNode> {
+    public class FreecellNode : OrderedNode<FreecellNode> {
         #region Configurable Parameters
 
         public const string RANKS = "A23456";
@@ -206,7 +206,7 @@ namespace Freecell {
 
             public Column Pop() {
                 if (_cards.Length == 0) {
-                    throw new InvalidOperationException("Pop from empty c");
+                    throw new InvalidOperationException("Pop from empty column");
                 } else if (_cards.Length == 1) {
                     return Empty;
                 } else {
@@ -469,7 +469,9 @@ namespace Freecell {
             foreach (string[] col in cols) {
                 Card[] cards = new Card[col.Length];
                 for (int i = col.Length - 1; i >= 0; i--) {
-                    Debug.Assert(col[i].Length == 2); // TODO: error check, not assert
+                    if (col[i].Length != 2) {
+                        throw new ArgumentException("Invalid card spec: " + col[i]);
+                    }
                     cards[col.Length - i - 1] = new Card(
                         RANKS.IndexOf(col[i].ToUpper()[0]),
                         SUITS.IndexOf(col[i].ToUpper()[1])
@@ -483,13 +485,17 @@ namespace Freecell {
 
         #region Hashing and Comparison
 
-        public static readonly new IEqualityComparer<FreecellNode> Comparator = FreecellNodeComparer.Instance;
+        public override IEqualityComparer<FreecellNode> Comparator {
+            get {
+                return FreecellNodeComparer.Instance;
+            }
+        }
 
         public class FreecellNodeComparer : IEqualityComparer<FreecellNode> {
 
             private FreecellNodeComparer() { }
 
-            public static FreecellNodeComparer Instance = new FreecellNodeComparer();
+            public static readonly FreecellNodeComparer Instance = new FreecellNodeComparer();
 
             #region IEqualityComparer<FreecellNode> Members
 

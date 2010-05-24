@@ -67,7 +67,7 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="HashableNode.cs" />
+    <Compile Include="OrderedNode.cs" />
     <Compile Include="Node.cs" />
     <Compile Include="SinglePlayerSolver.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />

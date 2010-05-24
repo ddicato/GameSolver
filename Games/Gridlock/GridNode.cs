@@ -7,7 +7,7 @@ using System.Text;
 using Solver;
 //\\// TODO: Move ordering based on recently-vacated squares
 namespace Gridlock {
-    public class GridNode : HashableNode<GridNode> {
+    public class GridNode : Node<GridNode> {
         #region Configurable Parameters
 
         public const int MAIN_BLOCK_LEN = 2;
@@ -212,13 +212,17 @@ namespace Gridlock {
 
         #region Hashing and Comparison
 
-        public static readonly new IEqualityComparer<GridNode> Comparator = GridNodeComparer.Instance;
+        public override IEqualityComparer<GridNode> Comparator {
+            get {
+                return GridNodeComparer.Instance;
+            }
+        }
 
         public class GridNodeComparer : IEqualityComparer<GridNode> {
 
             private GridNodeComparer() { }
 
-            public static GridNodeComparer Instance = new GridNodeComparer();
+            public static readonly GridNodeComparer Instance = new GridNodeComparer();
 
             #region IEqualityComparer<GridNode> Members
 
@@ -238,9 +242,7 @@ namespace Gridlock {
             if (_hashCache == null) {
                 int hash = 0; // TODO: start with prime
                 foreach (Block b in _blocks) {
-                    hash ^= b.GetHashCode();
-                    // TODO: uint not necessary
-                    hash = (hash << 9) | (int)((uint)hash >> 23);
+                    hash = (hash << 9) ^ (hash >> 23) ^ b.GetHashCode();
                 }
                 _hashCache = hash;
             }

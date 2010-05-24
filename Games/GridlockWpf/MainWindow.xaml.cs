@@ -23,7 +23,7 @@ namespace GridlockWpf {
     /// Interaction logic for MainWindow.xaml
     /// </summary>
     public partial class MainWindow : Window {
-        private SinglePlayerSolver<GridNode> _solver = new SinglePlayerSolver<GridNode>(GridNode.Comparator);
+        private SinglePlayerSolver<GridNode> _solver;
         private GridNode _level;
         private List<GridNode> _solution;
 
@@ -64,6 +64,7 @@ namespace GridlockWpf {
 
             if (int.TryParse(text, out index) && (level = GridLevels.Get(index)) != null) {
                 _level = level;
+                _solver = new SinglePlayerSolver<GridNode>(level.Comparator);
                 _solution = null;
                 solveButton.IsEnabled = true;
                 mainBox.Text = _level.ToString();
@@ -87,6 +88,7 @@ namespace GridlockWpf {
 
         private void worker_DoWork(object sender, DoWorkEventArgs e) {
             Debug.Assert(_level != null);
+            Debug.Assert(_solver != null);
 
             _solverStart = DateTime.Now;
             _solution = _solver.IterativeDeepening(_level);

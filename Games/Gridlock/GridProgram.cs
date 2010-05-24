@@ -10,7 +10,6 @@ namespace Gridlock {
         static void Main(string[] args) {
             bool verbose = !args.Contains("-q");
 
-            var solver = new SinglePlayerSolver<GridNode>(GridNode.Comparator);
             DateTime progStart = DateTime.Now;
 
             foreach (string arg in args) {
@@ -20,6 +19,7 @@ namespace Gridlock {
                 }
 
                 GridNode game = GridLevels.Get(index);
+                var solver = new SinglePlayerSolver<GridNode>(game.Comparator);
 
                 if (game == null) {
                     if (verbose) {
@@ -38,11 +38,11 @@ namespace Gridlock {
                     } else {
                         Console.WriteLine(game);
                     }
+                    Console.WriteLine("Transposition table entries: {0}", solver.TableEntries);
                 }
             }
 
             Console.WriteLine("Total execution time: {0:0.000} seconds", (DateTime.Now - progStart).TotalSeconds);
-            Console.WriteLine("Transposition table entries: {0}", solver.TableEntries);
             Console.WriteLine("Press Enter to exit.");
             Console.ReadLine();
         }
