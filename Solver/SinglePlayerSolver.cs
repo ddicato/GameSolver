@@ -134,11 +134,21 @@ namespace Solver {
             }
 
             // Move ordering
+            //\\// TODO: conflict
+            /*
             if (ply < maxPly - 2 && node is OrderedNode<T>) { // TODO: tune param
                 if (children.Count > 1) {
                     children.Sort(((OrderedNode<T>)(object)node).CompareMoves);
                 }
             }
+            */
+            /*
+            if (ply < maxPly - 2) { // TODO: tune param
+                if (children.Count > 1) {
+                    children.Sort(node.CompareMoves);
+                }
+            }
+            */
 
             // Recurse on each child
             if (threads > 1 && maxPly > 8) { // TODO: leave as high as 8??

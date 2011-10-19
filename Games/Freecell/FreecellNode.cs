@@ -7,7 +7,7 @@ using System.Text;
 using Solver;
 
 namespace Freecell {
-    public class FreecellNode : OrderedNode<FreecellNode> {
+    public class FreecellNode : Node<FreecellNode> {
         #region Configurable Parameters
 
         public const string RANKS = "A23456";
@@ -798,6 +798,8 @@ namespace Freecell {
             }
         }
 
+        //\\// TODO: conflict
+        /*
         public override int CompareMoves(FreecellNode x, FreecellNode y) {
             // TODO: average depth of crucial cards (e.g. aces)?
             // TODO: being covered by high cards should be worse than being covered by low cards
@@ -815,6 +817,7 @@ namespace Freecell {
 
             return xSum < ySum ? -1 : xSum > ySum ? 1 : 0;
         }
+        */
 
         public override string ToString() {
             StringBuilder res = new StringBuilder();
