@@ -21,7 +21,7 @@ namespace Solver {
     }
 
     public class SinglePlayerSolver<T> where T : Node<T> {
-        private static readonly int ProcCount = Environment.ProcessorCount;
+        private static readonly int ProcCount = 1;//\\//Environment.ProcessorCount; TODO: multi-threaded is slower
         private static readonly List<T> Unsolvable = null;
         private static readonly List<T> EmptySolution = new List<T>();
         
@@ -92,7 +92,7 @@ namespace Solver {
 
         private SolverResult<T> Solve(T node, int maxPly, int ply, int threads) {
             // Base case - node has already been searched
-            if (!_table.Insert(node, maxPly, ply, true)) {
+            if (ply > 0 && !_table.Insert(node, maxPly, ply, true)) {
                 _hits++;
                 return new SolverResult<T>(false, Unsolvable, ply, threads);
             }
