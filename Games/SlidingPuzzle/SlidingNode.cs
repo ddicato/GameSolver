@@ -6,7 +6,7 @@ using System.Text;
 using Solver;
 
 namespace SlidingPuzzle {
-    class SlidingNode : Node<SlidingNode> {
+    class SlidingNode : Node<SlidingNode>, IEquatable<SlidingNode> {
 
         private int[,] board;
 
@@ -176,7 +176,7 @@ namespace SlidingPuzzle {
             return output.ToString();
         }
 
-        public bool Equals(SlidingNode obj) {
+        public override bool Equals(SlidingNode obj) {
             if (this.width != obj.width || this.height != obj.height) {
 //#if DEBUG
                 throw new Exception("the fechk?");
@@ -220,31 +220,6 @@ namespace SlidingPuzzle {
                 }
             }
             return hash;
-        }
-
-        public override IEqualityComparer<SlidingNode> Comparator {
-            get {
-                return SlidingNodeComparer.Instance;
-            }
-        }
-
-        public class SlidingNodeComparer : IEqualityComparer<SlidingNode> {
-
-            private SlidingNodeComparer() { }
-
-            public static readonly SlidingNodeComparer Instance = new SlidingNodeComparer();
-
-            #region IEqualityComparer<SlidingNode> Members
-
-            public bool Equals(SlidingNode x, SlidingNode y) {
-                return x.Equals(y);
-            }
-
-            public int GetHashCode(SlidingNode obj) {
-                return obj.GetHashCode();
-            }
-
-            #endregion
         }
     }
 

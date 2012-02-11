@@ -5,11 +5,11 @@ using System.Linq;
 using System.Text;
 
 namespace Solver {
-    public class TranspositionTable<T> where T : Node<T> {
+    public class TranspositionTable<T> where T : Node<T>, IEquatable<T> {
         private readonly Dictionary<T, TableEntry> _dict;
         
-        public TranspositionTable(IEqualityComparer<T> Comparator) {
-            _dict = new Dictionary<T, TableEntry>(Comparator);
+        public TranspositionTable() {
+            _dict = new Dictionary<T, TableEntry>();
         }
 
         private struct TableEntry {

@@ -11,7 +11,7 @@ namespace SlidingPuzzle {
             DateTime progStart = DateTime.Now;
 
             SlidingNode game = PuzzleReader.Read(@"..\..\Games\SlidingPuzzle\data\sliding.puzzle");
-            var solver = new SinglePlayerSolver<SlidingNode>(game.Comparator);
+            var solver = new SinglePlayerSolver<SlidingNode>();
             
             if (game == null) {
                 Console.WriteLine("No game");

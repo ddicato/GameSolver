@@ -5,9 +5,10 @@ using System.Text;
 
 namespace GraphLib
 {
+    /*
     public abstract class Vertex : IComparable<Vertex>
     {
-        public override int CompareTo(Vertex other)
+        public int CompareTo(Vertex other)
         {
             if (object.ReferenceEquals(other, null))
             {
@@ -62,4 +63,5 @@ namespace GraphLib
             return !(a == b);
         }
     }
+    */
 }

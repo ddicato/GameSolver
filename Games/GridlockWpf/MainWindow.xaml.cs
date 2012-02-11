@@ -64,7 +64,7 @@ namespace GridlockWpf {
 
             if (int.TryParse(text, out index) && (level = GridLevels.Get(index)) != null) {
                 _level = level;
-                _solver = new SinglePlayerSolver<GridNode>(level.Comparator);
+                _solver = new SinglePlayerSolver<GridNode>();
                 _solution = null;
                 solveButton.IsEnabled = true;
                 mainBox.Text = _level.ToString();

@@ -46,7 +46,7 @@ namespace Freecell {
             //var game = FreecellNode.Read(unsolvable);
 
             var game = new FreecellNode(); // random deal
-            var solver = new SinglePlayerSolver<FreecellNode>(game.Comparator);
+            var solver = new SinglePlayerSolver<FreecellNode>();
             DateTime progStart = DateTime.Now;
 
             List<FreecellNode> solution = solver.IterativeDeepening(game);

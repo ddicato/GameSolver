@@ -6,7 +6,7 @@ using System.Text;
 using System.Threading;
 
 namespace Solver {
-    public struct SolverResult<T> where T : Node<T> {
+    public struct SolverResult<T> where T : Node<T>, IEquatable<T> {
         public readonly bool Winning;
         public readonly List<T> Solution;
         public readonly int Depth;
@@ -20,7 +20,7 @@ namespace Solver {
         }
     }
 
-    public class SinglePlayerSolver<T> where T : Node<T> {
+    public class SinglePlayerSolver<T> where T : Node<T>, IEquatable<T> {
         private static readonly int ProcCount = 1;//\\//Environment.ProcessorCount; TODO: multi-threaded is slower
         private static readonly List<T> Unsolvable = null;
         private static readonly List<T> EmptySolution = new List<T>();
@@ -33,11 +33,9 @@ namespace Solver {
         private int _currentPly;
 
         private readonly TranspositionTable<T> _table;
-        private readonly IEqualityComparer<T> _comparator;
 
-        public SinglePlayerSolver(IEqualityComparer<T> comparator) {
-            _comparator = comparator;
-            _table = new TranspositionTable<T>(comparator);
+        public SinglePlayerSolver() {
+            _table = new TranspositionTable<T>();
             ResetStats();
         }
 
@@ -47,39 +45,27 @@ namespace Solver {
         }
 
         public int Nodes {
-            get {
-                return _nodes;
-            }
+            get { return _nodes; }
         }
 
         public int TotalNodes {
-            get {
-                return _totalNodes + _nodes;
-            }
+            get { return _totalNodes + _nodes; }
         }
 
         public int Hits {
-            get {
-                return _hits;
-            }
+            get { return _hits; }
         }
 
         public int TotalHits {
-            get {
-                return _totalHits + _hits;
-            }
+            get { return _totalHits + _hits; }
         }
 
         public int TableEntries {
-            get {
-                return _table.Count;
-            }
+            get { return _table.Count; }
         }
 
         public int CurrentPly {
-            get {
-                return _currentPly;
-            }
+            get { return _currentPly; }
         }
 
         public SolverResult<T> Solve(T node) {

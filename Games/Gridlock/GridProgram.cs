@@ -19,7 +19,7 @@ namespace Gridlock {
                 }
 
                 GridNode game = GridLevels.Get(index);
-                var solver = new SinglePlayerSolver<GridNode>(game.Comparator);
+                var solver = new SinglePlayerSolver<GridNode>();
 
                 if (game == null) {
                     if (verbose) {

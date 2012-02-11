@@ -5,6 +5,7 @@ using System.Text;
 
 namespace GraphLib
 {
+    /*
     public struct Edge
     {
         public Edge(Vertex source, Vertex sink)
@@ -25,4 +26,5 @@ namespace GraphLib
             private set;
         }
     }
+    */
 }

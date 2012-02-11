@@ -7,7 +7,7 @@ using System.Text;
 using Solver;
 
 namespace Freecell {
-    public class FreecellNode : Node<FreecellNode> {
+    public class FreecellNode : Node<FreecellNode>, IEquatable<FreecellNode> {
         #region Configurable Parameters
 
         public const string RANKS = "A23456";
@@ -485,31 +485,6 @@ namespace Freecell {
 
         #region Hashing and Comparison
 
-        public override IEqualityComparer<FreecellNode> Comparator {
-            get {
-                return FreecellNodeComparer.Instance;
-            }
-        }
-
-        public class FreecellNodeComparer : IEqualityComparer<FreecellNode> {
-
-            private FreecellNodeComparer() { }
-
-            public static readonly FreecellNodeComparer Instance = new FreecellNodeComparer();
-
-            #region IEqualityComparer<FreecellNode> Members
-
-            public bool Equals(FreecellNode x, FreecellNode y) {
-                return x.Equals(y);
-            }
-
-            public int GetHashCode(FreecellNode obj) {
-                return obj.GetHashCode();
-            }
-
-            #endregion
-        }
-
         private int? _hashCache = null;
 
         private static void Combine(ref int hash, int value) {
@@ -569,7 +544,7 @@ namespace Freecell {
             return _hashCache.Value;
         }
 
-        public bool Equals(FreecellNode/*!*/ other) {
+        public override bool Equals(FreecellNode/*!*/ other) {
             Debug.Assert(other != null);
 
             if (object.ReferenceEquals(this, other)) {

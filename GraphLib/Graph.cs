@@ -5,6 +5,7 @@ using System.Text;
 
 namespace GraphLib
 {
+    /*
     public abstract class Graph<TNode> : HashSet<TNode> where TNode : Vertex
     {
         public Graph()
@@ -23,4 +24,5 @@ namespace GraphLib
     public abstract class Graph : Graph<Vertex>
     {
     }
+    */
 }

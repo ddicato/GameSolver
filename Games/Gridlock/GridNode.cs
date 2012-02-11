@@ -5,9 +5,10 @@ using System.Linq;
 using System.Text;
 
 using Solver;
+
 //\\// TODO: Move ordering based on recently-vacated squares
 namespace Gridlock {
-    public class GridNode : Node<GridNode> {
+    public class GridNode : Node<GridNode>, IEquatable<GridNode> {
         #region Configurable Parameters
 
         public const int MAIN_BLOCK_LEN = 2;
@@ -212,31 +213,6 @@ namespace Gridlock {
 
         #region Hashing and Comparison
 
-        public override IEqualityComparer<GridNode> Comparator {
-            get {
-                return GridNodeComparer.Instance;
-            }
-        }
-
-        public class GridNodeComparer : IEqualityComparer<GridNode> {
-
-            private GridNodeComparer() { }
-
-            public static readonly GridNodeComparer Instance = new GridNodeComparer();
-
-            #region IEqualityComparer<GridNode> Members
-
-            public bool Equals(GridNode x, GridNode y) {
-                return x.Equals(y);
-            }
-
-            public int GetHashCode(GridNode obj) {
-                return obj.GetHashCode();
-            }
-
-            #endregion
-        }
-
         private int? _hashCache = null;
         public override int GetHashCode() {
             if (_hashCache == null) {
@@ -253,7 +229,7 @@ namespace Gridlock {
         // isomorphic boards with differing block ID assignments
         // This is correct within a single search tree, since no two blocks can ever
         // switch position through the course of a game
-        public bool Equals(GridNode/*!*/ other) {
+        public override bool Equals(GridNode/*!*/ other) {
             Debug.Assert(other != null);
             Debug.Assert(_blocks.Length == other._blocks.Length);
 
