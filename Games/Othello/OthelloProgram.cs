@@ -4,7 +4,7 @@ using System.Linq;
 using System.Text;
 
 namespace Othello {
-    class Program {
+    class OthelloProgram {
         static void Main(string[] args) {
         }
     }

@@ -3,6 +3,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     Title="Gridlock" Height="300" Width="300">
     <Grid>
+        <!-- TODO: clean this up -->
         <TextBox Margin="12,12,106,90" Name="mainBox" IsReadOnly="True" FontFamily="Lucida Console" FontSize="16" />
         <TextBox Margin="0,12,12,117" Name="statusBox" HorizontalAlignment="Right" Width="88" IsReadOnly="True" />
         <Button Height="23" Margin="52,0,0,20" Name="solveButton" VerticalAlignment="Bottom" HorizontalAlignment="Left" Width="81" IsEnabled="False" Click="solveButton_Click">Solve</Button>
