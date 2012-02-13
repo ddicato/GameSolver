@@ -8,8 +8,12 @@ using Solver;
 namespace Othello {
     class OthelloProgram {
         static void Main(string[] args) {
-            HumanPlayer player = new HumanPlayer();
-            GameLoop(player, player);
+            Player<OthelloNode> black = new HumanPlayer();
+            Player<OthelloNode> white = new BruteForcePlayer(
+                2,
+                board => board.MonteCarlo(100));
+
+            GameLoop(black, white);
 
             Console.WriteLine("Press Enter to exit.");
             Console.ReadLine();

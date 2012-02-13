@@ -76,6 +76,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="HumanPlayer.cs" />
+    <Compile Include="BruteForcePlayer.cs" />
     <Compile Include="OthelloNode.cs" />
     <Compile Include="OthelloProgram.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />

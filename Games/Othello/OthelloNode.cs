@@ -363,12 +363,12 @@ namespace Othello
 
         #region Heuristics
 
-        private int PieceCount() {
+        public int PieceCount() {
             return BitCount(this.board[this.turn]) - BitCount(this.board[(this.turn + 1) & 1]);
         }
 
         // TODO: merge some of these functions so that we only iterate once
-        private int Frontiers() {
+        public int Frontiers() {
             ulong self = this.board[this.turn];
             ulong other = this.board[(this.turn + 1) & 1];
             ulong occupied = self | other;
@@ -395,7 +395,7 @@ namespace Othello
 
         // Potential mobility is the number of empty squares next to an opponent's piece. It provides an
         // approximation for mobility, but at a smaller performance cost.
-        private int PotentialMobility() {
+        public int PotentialMobility() {
             ulong self = this.board[this.turn];
             ulong other = this.board[(this.turn + 1) & 1];
             ulong occupied = self | other;
@@ -411,6 +411,25 @@ namespace Othello
             }
 
             return total;
+        }
+
+        public int MonteCarlo(int iters) {
+            Random random = new Random();
+            int totalScore = 0;
+            IList<OthelloNode> children = this.GetChildren();
+            for (int i = 0; i < iters; i++) {
+                OthelloNode current = this;
+                IList<OthelloNode> currentChildren = children; // TODO: not needed once we cache result of GetChildren
+
+                while (currentChildren.Count > 0) {
+                    current = currentChildren[random.Next(currentChildren.Count)];
+                    currentChildren = current.GetChildren();
+                }
+
+                totalScore += current.Score;
+            }
+
+            return this.turn == BLACK ? totalScore : -totalScore;
         }
 
         #endregion
