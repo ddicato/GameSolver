@@ -16,34 +16,32 @@ namespace Othello
         private ulong[] board = new ulong[2];
         private int turn;
 
-        // Number of consecutive passes starting with the previous turn.
-        private int passed = 0;
-
-        public override uint PlayerCount {
-            get { return 2; }
-        }
+        // True if the previous player's move was a pass.
+        internal bool pass = false;
 
         public override uint Turn {
             get { return (uint)this.turn; }
         }
 
-        private OthelloNode(int turn, ulong self, ulong other, int passed = 0) {
+        private OthelloNode(int turn, ulong self, ulong other, bool pass = false) {
             this.turn = turn;
             this.board[turn] = self;
             this.board[(turn + 1) & 1] = other;
-            this.passed = passed;
+            this.pass = pass;
         }
 
         public OthelloNode() : this(
             BLACK,
             Square[4, 3] | Square[3, 4],
-            Square[3, 3] | Square[5, 5]) {
+            Square[3, 3] | Square[4, 4]) {
         }
 
         // TODO: might need to expand API to tell whose point of view this is from, not
         // to mention an evaluation function that maps to a number, not just a bool.
         public override bool IsWinning {
-            get { return this.GetChildren().Count == 0; }
+            get {
+                return BitCount(this.board[this.turn]) > BitCount(this.board[(this.turn + 1) & 1]);
+            }
         }
 
         #region Bitmasks
@@ -207,7 +205,7 @@ namespace Othello
 
         #region Move Calculations
 
-        private static int BitCount(ulong value) {
+        internal static int BitCount(ulong value) {
             ulong count = value -
                 ((value >> 1) & 0x7777777777777777ul) -
                 ((value >> 2) & 0x3333333333333333ul) -
@@ -222,11 +220,6 @@ namespace Othello
         public override List<OthelloNode> GetChildren() {
             List<OthelloNode> children = new List<OthelloNode>();
 
-            // Game is over when both players have passed.
-            if (this.passed > 1) {
-                return children;
-            }
-
             ulong self = this.board[this.turn];
             ulong other = this.board[(this.turn + 1) & 1];
             ulong occupied = self | other;
@@ -235,141 +228,124 @@ namespace Othello
                 for (int iStart = 0; iStart < 8; iStart++) {
                     // Make sure the current square is unoccupied and at least one adjacent square is
                     // occupied by the opponent.
-                    if ((Square[iStart, jStart] | occupied) != 0 ||
-                        (Adjacent[iStart, jStart] | other) == 0) {
+                    if ((Square[iStart, jStart] & occupied) != 0 ||
+                        (Adjacent[iStart, jStart] & other) == 0) {
                         continue;
                     }
 
                     // Search left
                     int i, j;
                     ulong square;
+                    ulong allTraces = 0ul;
                     ulong trace = 0ul;
                     for (i = iStart - 1, j = jStart;
-                        i >= 0 && (other | (square = Square[i, j])) != 0;
+                        i >= 0 && (other & (square = Square[i, j])) != 0;
                         i--) {
                         trace |= square;
                     }
-                    if (i >= 0 && (self | (square = Square[i, j])) != 0) {
-                        children.Add(
-                            new OthelloNode(
-                                (this.turn + 1) & 1,
-                                other & ~trace,
-                                self | trace | square));
+                    if (trace != 0 && i >= 0 && (self & (square = Square[i, j])) != 0) {
+                        allTraces |= trace | square;
                     }
 
                     // Search up-left
                     trace = 0ul;
                     for (i = iStart - 1, j = jStart - 1;
-                        i >= 0 && j >= 0 && (other | (square = Square[i, j])) != 0;
+                        i >= 0 && j >= 0 && (other & (square = Square[i, j])) != 0;
                         i--, j--) {
                         trace |= square;
                     }
-                    if (i >= 0 && j >= 0 && (self | (square = Square[i, j])) != 0) {
-                        children.Add(
-                            new OthelloNode(
-                                (this.turn + 1) & 1,
-                                other & ~trace,
-                                self | trace | square));
+                    if (trace != 0 && i >= 0 && j >= 0 && (self & (square = Square[i, j])) != 0) {
+                        allTraces |= trace | square;
                     }
 
                     // Search down-left
                     trace = 0ul;
                     for (i = iStart - 1, j = jStart + 1;
-                        i >= 0 && j < 8 && (other | (square = Square[i, j])) != 0;
+                        i >= 0 && j < 8 && (other & (square = Square[i, j])) != 0;
                         i--, j++) {
                         trace |= square;
                     }
-                    if (i >= 0 && j < 8 && (self | (square = Square[i, j])) != 0) {
-                        children.Add(
-                            new OthelloNode(
-                                (this.turn + 1) & 1,
-                                other & ~trace,
-                                self | trace | square));
+                    if (trace != 0 && i >= 0 && j < 8 && (self & (square = Square[i, j])) != 0) {
+                        allTraces |= trace | square;
                     }
 
                     // Search right
                     trace = 0ul;
                     for (i = iStart + 1, j = jStart;
-                        i < 8 && (other | (square = Square[i, j])) != 0;
+                        i < 8 && (other & (square = Square[i, j])) != 0;
                         i++) {
                         trace |= square;
                     }
-                    if (i < 8 && (self | (square = Square[i, j])) != 0) {
-                        children.Add(
-                            new OthelloNode(
-                                (this.turn + 1) & 1,
-                                other & ~trace,
-                                self | trace | square));
+                    if (trace != 0 && i < 8 && (self & (square = Square[i, j])) != 0) {
+                        allTraces |= trace | square;
                     }
 
                     // Search up-right
                     trace = 0ul;
                     for (i = iStart + 1, j = jStart - 1;
-                        i < 8 && j >= 0 && (other | (square = Square[i, j])) != 0;
+                        i < 8 && j >= 0 && (other & (square = Square[i, j])) != 0;
                         i++, j--) {
                         trace |= square;
                     }
-                    if (i < 8 && j >= 0 && (self | (square = Square[i, j])) != 0) {
-                        children.Add(
-                            new OthelloNode(
-                                (this.turn + 1) & 1,
-                                other & ~trace,
-                                self | trace | square));
+                    if (trace != 0 && i < 8 && j >= 0 && (self & (square = Square[i, j])) != 0) {
+                        allTraces |= trace | square;
                     }
 
                     // Search down-right
                     trace = 0ul;
                     for (i = iStart + 1, j = jStart + 1;
-                        i < 8 && j < 8 && (other | (square = Square[i, j])) != 0;
+                        i < 8 && j < 8 && (other & (square = Square[i, j])) != 0;
                         i++, j++) {
                         trace |= square;
                     }
-                    if (i < 8 && j < 8 && (self | (square = Square[i, j])) != 0) {
-                        children.Add(
-                            new OthelloNode(
-                                (this.turn + 1) & 1,
-                                other & ~trace,
-                                self | trace | square));
+                    if (trace != 0 && i < 8 && j < 8 && (self & (square = Square[i, j])) != 0) {
+                        allTraces |= trace | square;
                     }
 
                     // Search up
+                    trace = 0ul;
                     for (i = iStart, j = jStart - 1;
-                        j >= 0 && (other | (square = Square[i, j])) != 0;
+                        j >= 0 && (other & (square = Square[i, j])) != 0;
                         j--) {
                         trace |= square;
                     }
-                    if (j >= 0 && (self | (square = Square[i, j])) != 0) {
-                        children.Add(
-                            new OthelloNode(
-                                (this.turn + 1) & 1,
-                                other & ~trace,
-                                self | trace | square));
+                    if (trace != 0 && j >= 0 && (self & (square = Square[i, j])) != 0) {
+                        allTraces |= trace | square;
                     }
 
                     // Search down
                     trace = 0ul;
                     for (i = iStart, j = jStart + 1;
-                        j < 8 && (other | (square = Square[i, j])) != 0;
+                        j < 8 && (other & (square = Square[i, j])) != 0;
                         j++) {
                         trace |= square;
                     }
-                    if (j < 8 && (self | (square = Square[i, j])) != 0) {
+                    if (trace != 0 && j < 8 && (self & (square = Square[i, j])) != 0) {
+                        allTraces |= trace | square;
+                    }
+
+                    // If we've flipped any pieces, we have a legal move.
+                    if (allTraces != 0) {
+                        allTraces |= Square[iStart, jStart];
                         children.Add(
                             new OthelloNode(
                                 (this.turn + 1) & 1,
-                                other & ~trace,
-                                self | trace | square));
+                                other & ~allTraces,
+                                self | allTraces));
                     }
                 }
             }
 
-            // Passing is always a legal move.
-            children.Add(
-                new OthelloNode(
-                    (this.turn + 1) & 1,
-                    this.board[BLACK],
-                    this.board[WHITE],
-                    passed: this.passed + 1));
+            // If there are no legal moves, we're forced to pass. If the previous
+            // turn was a pass, then the game is over.
+            if (!this.pass && children.Count == 0) {
+                children.Add(
+                    new OthelloNode(
+                        (this.turn + 1) & 1,
+                        this.board[(this.turn + 1) & 1],
+                        this.board[this.turn],
+                        pass: true));
+            }
 
             return children;
         }
@@ -380,14 +356,19 @@ namespace Othello
             const char black = 'X';
             const char white = 'O';
             const char blank = '.';
+            const char invalid = '!';
 
-            StringBuilder result = new StringBuilder(145); // "Turn =  _" + 9*'\n' + 64*2 = 8 + 9 + 128 = 145
+            StringBuilder result = new StringBuilder(146); // "Turn =  _*" + 9*'\n' + 64*2 = 8 + 9 + 128 = 145
             result.Append("Turn = ");
             result.Append(this.turn == BLACK ? black : white);
+            result.Append(this.pass ? '*' : ' ');
+            result.AppendLine();
             for (int j = 0; j < 8; j++) {
                 for (int i = 0; i < 8; i++) {
                     ulong square = Square[i, j];
                     result.Append(
+                        (this.board[BLACK] & this.board[WHITE] & square) != 0 ?
+                        invalid :
                         (this.board[BLACK] & square) != 0 ?
                         black :
                         (this.board[WHITE] & square) != 0 ?
