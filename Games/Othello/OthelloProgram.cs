@@ -14,10 +14,7 @@ namespace Othello {
             List<OthelloNode> temp = new List<OthelloNode>();
             Player<OthelloNode> black = new BruteForcePlayer(
                 3,
-                board => {
-                    board.GetChildren(temp);
-                    return temp.Count;
-                });
+                board => board.PotentialMobility());
             Player<OthelloNode> white = new BruteForcePlayer(
                 1,
                 board => board.MonteCarlo(5));

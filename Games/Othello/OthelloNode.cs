@@ -376,22 +376,16 @@ namespace Othello
         // TODO: merge some of these functions so that we only iterate once
         public int Frontiers() {
             ulong self = this.board[this.turn];
-            ulong other = this.board[(this.turn + 1) & 1];
-            ulong occupied = self | other;
+            ulong occupied = self | this.board[(this.turn + 1) & 1];
 
             int total = 0;
 
             for (int j = 0; j < 8; j++) {
                 for (int i = 0; i < 8; i++) {
                     ulong square = Square[i, j];
-                    if ((self & square) != 0) {
-                        if ((Adjacent[i, j] & occupied) != 0) {
-                            total++;
-                        }
-                    } else if ((other & square) != 0) {
-                        if ((Adjacent[i, j] & occupied) != 0) {
-                            total--;
-                        }
+                    if ((self & square) != 0 &&
+                        (Adjacent[i, j] & occupied) != 0) {
+                        total++;
                     }
                 }
             }
@@ -402,17 +396,20 @@ namespace Othello
         // Potential mobility is the number of empty squares next to an opponent's piece. It provides an
         // approximation for mobility, but at a smaller performance cost.
         public int PotentialMobility() {
-            ulong self = this.board[this.turn];
             ulong other = this.board[(this.turn + 1) & 1];
-            ulong occupied = self | other;
+            ulong occupied = other | this.board[this.turn];
 
             int total = 0;
-            foreach (ulong adjacent in Adjacent) {
-                if ((self & adjacent) != 0) {
-                    total--;
-                }
-                if ((other & adjacent) != 0) {
-                    total++;
+            for (int j = 0; j < 8; j++) {
+                for (int i = 0; i < 8; i++) {
+                    if ((Square[i, j] & occupied) != 0) {
+                        continue;
+                    }
+
+                    ulong adjacent = Adjacent[i, j];
+                    if ((other & adjacent) != 0) {
+                        total++;
+                    }
                 }
             }
 
