@@ -7,7 +7,7 @@ using Solver;
 
 namespace Othello
 {
-    public class OthelloNode : TwoPlayerNode<OthelloNode>, IEquatable<OthelloNode> {
+    public class OthelloNode : TwoPlayerNode<OthelloNode> {
         // TODO: change to SELF/OTHER and remove turn? change board[] to 2 ulong fields?
         // TODO: Remove Turn and PlayerCount?
         private const int BLACK = 0;
@@ -38,9 +38,11 @@ namespace Othello
 
         // TODO: might need to expand API to tell whose point of view this is from, not
         // to mention an evaluation function that maps to a number, not just a bool.
-        public override bool IsWinning {
+        public override bool IsGameOver {
             get {
-                return BitCount(this.board[this.turn]) > BitCount(this.board[(this.turn + 1) & 1]);
+                // TODO: make this more efficient with caching
+                return BitCount(this.board[BLACK] | this.board[WHITE]) == 64 ||
+                    (this.pass && this.GetChildren().Count == 0);
             }
         }
 
@@ -348,6 +350,60 @@ namespace Othello
             }
 
             return children;
+        }
+
+        #endregion
+
+        #region Heuristics
+
+        private int PieceCount() {
+            return BitCount(this.board[this.turn]) - BitCount(this.board[(this.turn + 1) & 1]);
+        }
+
+        // TODO: merge some of these functions so that we only iterate once
+        private int Frontiers() {
+            ulong self = this.board[this.turn];
+            ulong other = this.board[(this.turn + 1) & 1];
+            ulong occupied = self | other;
+
+            int total = 0;
+
+            for (int j = 0; j < 8; j++) {
+                for (int i = 0; i < 8; i++) {
+                    ulong square = Square[i, j];
+                    if ((self & square) != 0) {
+                        if ((Adjacent[i, j] & occupied) != 0) {
+                            total++;
+                        }
+                    } else if ((other & square) != 0) {
+                        if ((Adjacent[i, j] & occupied) != 0) {
+                            total--;
+                        }
+                    }
+                }
+            }
+
+            return total;
+        }
+
+        // Potential mobility is the number of empty squares next to an opponent's piece. It provides an
+        // approximation for mobility, but at a smaller performance cost.
+        private int PotentialMobility() {
+            ulong self = this.board[this.turn];
+            ulong other = this.board[(this.turn + 1) & 1];
+            ulong occupied = self | other;
+
+            int total = 0;
+            foreach (ulong adjacent in Adjacent) {
+                if ((self & adjacent) != 0) {
+                    total--;
+                }
+                if ((other & adjacent) != 0) {
+                    total++;
+                }
+            }
+
+            return total;
         }
 
         #endregion

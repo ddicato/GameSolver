@@ -6,7 +6,7 @@ using System.Text;
 using Solver;
 
 namespace SlidingPuzzle {
-    class SlidingNode : Node<SlidingNode>, IEquatable<SlidingNode> {
+    class SlidingNode : Node<SlidingNode> {
 
         private int[,] board;
 
@@ -125,7 +125,7 @@ namespace SlidingPuzzle {
             return children;
         }
 
-        public override bool IsWinning {
+        public override bool IsGameOver {
             get {
                 if (board[width - 1, height - 1] != BLANK) {
                     return false;

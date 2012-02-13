@@ -8,7 +8,7 @@ using Solver;
 
 //\\// TODO: Move ordering based on recently-vacated squares
 namespace Gridlock {
-    public class GridNode : Node<GridNode>, IEquatable<GridNode> {
+    public class GridNode : Node<GridNode> {
         #region Configurable Parameters
 
         public const int MAIN_BLOCK_LEN = 2;
@@ -248,7 +248,7 @@ namespace Gridlock {
         public override List<GridNode> GetChildren() {
             List<GridNode> children = new List<GridNode>();
 
-            if (IsWinning) {
+            if (IsGameOver) {
                 return children;
             }
 
@@ -278,7 +278,7 @@ namespace Gridlock {
             return children;
         }
         
-        public override bool IsWinning {
+        public override bool IsGameOver {
             get {
                 return _board[WIN_X, WIN_Y] == 1;
             }

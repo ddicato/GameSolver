@@ -7,7 +7,7 @@ using System.Text;
 using Solver;
 
 namespace Freecell {
-    public class FreecellNode : Node<FreecellNode>, IEquatable<FreecellNode> {
+    public class FreecellNode : Node<FreecellNode> {
         #region Configurable Parameters
 
         public const string RANKS = "A23456";
@@ -761,7 +761,7 @@ namespace Freecell {
             Debug.Assert(_hashCache == null);
         }
 
-        public override bool IsWinning {
+        public override bool IsGameOver {
             get {
                 for (int i = 0; i < SUITS.Length; i++) {
                     Debug.Assert(_home[i] < RANKS.Length);

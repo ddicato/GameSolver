@@ -6,7 +6,7 @@ using System.Text;
 using System.Threading;
 
 namespace Solver {
-    public struct SolverResult<T> where T : Node<T>, IEquatable<T> {
+    public struct SolverResult<T> where T : Node<T> {
         public readonly bool Winning;
         public readonly List<T> Solution;
         public readonly int Depth;
@@ -20,7 +20,7 @@ namespace Solver {
         }
     }
 
-    public class SinglePlayerSolver<T> where T : Node<T>, IEquatable<T> {
+    public class SinglePlayerSolver<T> where T : Node<T> {
         private static readonly int ProcCount = 1;//\\//Environment.ProcessorCount; TODO: multi-threaded is slower
         private static readonly List<T> Unsolvable = null;
         private static readonly List<T> EmptySolution = new List<T>();
@@ -83,7 +83,7 @@ namespace Solver {
                 return new SolverResult<T>(false, Unsolvable, ply, threads);
             }
             
-            bool winning = node.IsWinning;
+            bool winning = node.IsGameOver;
             _nodes++;
 
             // Base case - winning board
