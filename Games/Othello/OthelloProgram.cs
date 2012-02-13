@@ -8,28 +8,60 @@ using Solver;
 namespace Othello {
     class OthelloProgram {
         static void Main(string[] args) {
-            Player<OthelloNode> black = new HumanPlayer();
-            Player<OthelloNode> white = new BruteForcePlayer(
-                2,
-                board => board.MonteCarlo(100));
+            const bool verbose = false;
+            const int games = 100;
 
-            GameLoop(black, white);
+            Player<OthelloNode> black = new RandomPlayer();
+            Player<OthelloNode> white = new BruteForcePlayer(
+                1,
+                board => board.MonteCarlo(20));
+
+            int totalScore = 0;
+            int blackWins = 0;
+            int whiteWins = 0;
+            for (int i = 0; i < games; i++) {
+                if (i > 0) {
+                    Console.WriteLine();
+                }
+                Console.WriteLine("Game {0} of {1}", i + 1, games);
+
+                int result = GameLoop(black, white, verbose);
+
+                totalScore += result;
+                if (result > 0) {
+                    blackWins++;
+                } else if (result < 0) {
+                    whiteWins++;
+                }
+
+                Console.WriteLine("Average score: {0}", (double)totalScore / (i + 1));
+            }
+
+            Console.WriteLine(
+                "Out of {0} games: {1} Black win(s), {2} White win(s), and {3} draw(s).",
+                games,
+                blackWins,
+                whiteWins,
+                games - blackWins - whiteWins);
 
             Console.WriteLine("Press Enter to exit.");
             Console.ReadLine();
         }
 
-        private static void GameLoop(Player<OthelloNode> black, Player<OthelloNode> white) {
+        private static int GameLoop(Player<OthelloNode> black, Player<OthelloNode> white, bool verbose = false) {
             OthelloNode board = new OthelloNode();
             List<OthelloNode> children;
             while (!board.IsGameOver) {
-                Console.WriteLine("Current board:");
-                Console.WriteLine(board);
+                if (verbose || board.Turn == OthelloNode.BLACK && black is HumanPlayer ||
+                    board.Turn == OthelloNode.WHITE && white is HumanPlayer) {
+                    Console.WriteLine("Current board:");
+                    Console.WriteLine(board);
+                }
                 children = board.GetChildren();
 
                 if (children.Count == 0) {
                     Console.WriteLine("ERROR: No legal moves, but game is not over.");
-                    return;
+                    return 0;
                 }
 
                 int index;
@@ -44,22 +76,26 @@ namespace Othello {
                 if (index < 0 || index >= children.Count) {
                     Console.WriteLine("{0} made an illegal move.", player);
                     Console.WriteLine("{0} wins!", otherPlayer);
-                    return;
+                    return board.Turn == OthelloNode.BLACK ? -64 : 64;
                 }
 
                 board = children[index];
             }
 
-            Console.WriteLine("Final Board:");
-            Console.WriteLine(board);
-            Console.WriteLine("Final Score: {0}", board.Score);
-            if (board.Score > 0) {
-                Console.WriteLine("Black wins!");
-            } else if (board.Score < 0) {
-                Console.WriteLine("White wins!");
-            } else {
-                Console.WriteLine("The game is a draw.");
+            if (verbose) {
+                Console.WriteLine("Final Board:");
+                Console.WriteLine(board);
             }
+            Console.Write("Final Score: {0}", board.Score);
+            if (board.Score > 0) {
+                Console.WriteLine(" (Black wins)");
+            } else if (board.Score < 0) {
+                Console.WriteLine(" (White wins)");
+            } else {
+                Console.WriteLine(" (The game is a draw)");
+            }
+
+            return board.Score;
         }
 
         #region Test Code

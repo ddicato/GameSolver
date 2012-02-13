@@ -19,8 +19,8 @@ namespace Othello
         // True if the previous player's move was a pass.
         internal bool pass = false;
 
-        public override uint Turn {
-            get { return (uint)this.turn; }
+        public override int Turn {
+            get { return this.turn; }
         }
 
         private OthelloNode(int turn, ulong self, ulong other, bool pass = false) {
@@ -227,7 +227,15 @@ namespace Othello
         }
 
         public override List<OthelloNode> GetChildren() {
-            List<OthelloNode> children = new List<OthelloNode>();
+            var children = new List<OthelloNode>();
+            this.GetChildren(children);
+
+            return children;
+        }
+
+        // TODO: make this part of node API?
+        private void GetChildren(List<OthelloNode> children) {
+            children.Clear();
 
             ulong self = this.board[this.turn];
             ulong other = this.board[(this.turn + 1) & 1];
@@ -355,8 +363,6 @@ namespace Othello
                         this.board[this.turn],
                         pass: true));
             }
-
-            return children;
         }
 
         #endregion
@@ -416,14 +422,19 @@ namespace Othello
         public int MonteCarlo(int iters) {
             Random random = new Random();
             int totalScore = 0;
-            IList<OthelloNode> children = this.GetChildren();
+            List<OthelloNode> children = this.GetChildren();
+            List<OthelloNode> currentChildren = new List<OthelloNode>();
             for (int i = 0; i < iters; i++) {
                 OthelloNode current = this;
-                IList<OthelloNode> currentChildren = children; // TODO: not needed once we cache result of GetChildren
+                // TODO: not needed once we cache result of GetChildren
+                currentChildren.Clear();
+                foreach (OthelloNode child in children) {
+                    currentChildren.Add(child);
+                }
 
                 while (currentChildren.Count > 0) {
                     current = currentChildren[random.Next(currentChildren.Count)];
-                    currentChildren = current.GetChildren();
+                    current.GetChildren(currentChildren);
                 }
 
                 totalScore += current.Score;

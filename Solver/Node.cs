@@ -15,6 +15,6 @@ namespace Solver {
     }
 
     public abstract class TwoPlayerNode<Self> : Node<Self> where Self : TwoPlayerNode<Self> {
-        public abstract uint Turn { get; }
+        public abstract int Turn { get; }
     }
 }
