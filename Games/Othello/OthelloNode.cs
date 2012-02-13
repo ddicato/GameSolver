@@ -10,8 +10,8 @@ namespace Othello
     public class OthelloNode : TwoPlayerNode<OthelloNode> {
         // TODO: change to SELF/OTHER and remove turn? change board[] to 2 ulong fields?
         // TODO: Remove Turn and PlayerCount?
-        private const int BLACK = 0;
-        private const int WHITE = 1;
+        public const int BLACK = 0;
+        public const int WHITE = 1;
 
         private ulong[] board = new ulong[2];
         private int turn;
@@ -43,6 +43,13 @@ namespace Othello
                 // TODO: make this more efficient with caching
                 return BitCount(this.board[BLACK] | this.board[WHITE]) == 64 ||
                     (this.pass && this.GetChildren().Count == 0);
+            }
+        }
+
+        // The number of pieces Black is winning by.
+        public int Score {
+            get {
+                return BitCount(this.board[BLACK]) - BitCount(this.board[WHITE]);
             }
         }
 
@@ -408,34 +415,108 @@ namespace Othello
 
         #endregion
 
-        public override string ToString() {
+        #region Pretty-printing
+
+        private static void PrintHorizontalSeparator(StringBuilder sb, int groupSize, int offset, bool extra = false) {
+            if (offset > 0) {
+                for (int i = 0; i < groupSize; i++) {
+                    if (i == 0) {
+                        sb.Append("---------------");
+                    } else {
+                        sb.Append("-+----------------");
+                    }
+                }
+                if (extra) {
+                    sb.Append("-+");
+                }
+                sb.AppendLine();
+            }
+        }
+
+        public static string PrintNodes(int groupSize, bool showTurn, params OthelloNode[] nodes) {
+            if (groupSize <= 0) {
+                return string.Empty;
+            }
+
+            StringBuilder sb = new StringBuilder();
+
+            int offset = 0;
+            OthelloNode[] buffer = new OthelloNode[groupSize];
+            for (; offset + groupSize <= nodes.Length; offset += groupSize) {
+                for (int i = 0; i < groupSize; i++) {
+                    buffer[i] = nodes[offset + i];
+                }
+
+                PrintHorizontalSeparator(sb, groupSize, offset);
+                PrintNodes(sb, showTurn, buffer);
+            }
+
+            groupSize = nodes.Length % groupSize;
+            if (groupSize > 0) {
+                buffer = new OthelloNode[groupSize];
+                for (int i = 0; i < groupSize; i++) {
+                    buffer[i] = nodes[offset + i];
+                }
+
+                PrintHorizontalSeparator(sb, groupSize, offset, extra: true);
+                PrintNodes(sb, showTurn, buffer);
+            }
+
+            return sb.ToString();
+        }
+
+        private static void PrintNodes(StringBuilder sb, bool showTurn, params OthelloNode[] nodes) {
             const char black = 'X';
             const char white = 'O';
             const char blank = '.';
             const char invalid = '!';
 
-            StringBuilder result = new StringBuilder(146); // "Turn =  _*" + 9*'\n' + 64*2 = 8 + 9 + 128 = 145
-            result.Append("Turn = ");
-            result.Append(this.turn == BLACK ? black : white);
-            result.Append(this.pass ? '*' : ' ');
-            result.AppendLine();
-            for (int j = 0; j < 8; j++) {
-                for (int i = 0; i < 8; i++) {
-                    ulong square = Square[i, j];
-                    result.Append(
-                        (this.board[BLACK] & this.board[WHITE] & square) != 0 ?
-                        invalid :
-                        (this.board[BLACK] & square) != 0 ?
-                        black :
-                        (this.board[WHITE] & square) != 0 ?
-                        white :
-                        blank);
-                    result.Append(' ');
+            bool first = true;
+            if (showTurn) {
+                foreach (OthelloNode node in nodes) {
+                    if (!first) {
+                        sb.Append(" | ");
+                    }
+                    first = false;
+                    sb.Append("Turn = ");
+                    sb.Append(node.turn == BLACK ? black : white);
+                    sb.Append(node.pass ? '*' : ' ');
+                    sb.Append("      ");
                 }
-                result.AppendLine();
+                sb.AppendLine();
             }
 
-            return result.ToString();
+            for (int j = 0; j < 8; j++) {
+                first = true;
+                foreach (OthelloNode node in nodes) {
+                    if (!first) {
+                        sb.Append(" | ");
+                    }
+                    first = false;
+
+                    for (int i = 0; i < 8; i++) {
+                        ulong square = Square[i, j];
+                        if (i > 0) {
+                            sb.Append(' ');
+                        }
+                        sb.Append(
+                            (node.board[BLACK] & node.board[WHITE] & square) != 0 ?
+                            invalid :
+                            (node.board[BLACK] & square) != 0 ?
+                            black :
+                            (node.board[WHITE] & square) != 0 ?
+                            white :
+                            blank);
+                    }
+                }
+                sb.AppendLine();
+            }
         }
+
+        public override string ToString() {
+            return PrintNodes(1, true, this);
+        }
+
+        #endregion
     }
 }

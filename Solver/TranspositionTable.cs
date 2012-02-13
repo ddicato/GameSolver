@@ -5,7 +5,7 @@ using System.Linq;
 using System.Text;
 
 namespace Solver {
-    public class TranspositionTable<T> where T : Node<T>, IEquatable<T> {
+    public class TranspositionTable<T> where T : Node<T> {
         private readonly Dictionary<T, TableEntry> _dict;
         
         public TranspositionTable() {

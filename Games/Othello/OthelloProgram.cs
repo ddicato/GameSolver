@@ -3,13 +3,59 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 
+using Solver;
+
 namespace Othello {
     class OthelloProgram {
         static void Main(string[] args) {
-            RunTests();
+            HumanPlayer player = new HumanPlayer();
+            GameLoop(player, player);
 
             Console.WriteLine("Press Enter to exit.");
             Console.ReadLine();
+        }
+
+        private static void GameLoop(Player<OthelloNode> black, Player<OthelloNode> white) {
+            OthelloNode board = new OthelloNode();
+            List<OthelloNode> children;
+            while (!board.IsGameOver) {
+                Console.WriteLine("Current board:");
+                Console.WriteLine(board);
+                children = board.GetChildren();
+
+                if (children.Count == 0) {
+                    Console.WriteLine("ERROR: No legal moves, but game is not over.");
+                    return;
+                }
+
+                int index;
+                if (board.Turn == OthelloNode.BLACK) {
+                    index = black.SelectNode(children);
+                } else {
+                    index = white.SelectNode(children);
+                }
+
+                string player = board.Turn == OthelloNode.BLACK ? "Black" : "Wihte";
+                string otherPlayer = board.Turn == OthelloNode.BLACK ? "Wihte" : "Black";
+                if (index < 0 || index >= children.Count) {
+                    Console.WriteLine("{0} made an illegal move.", player);
+                    Console.WriteLine("{0} wins!", otherPlayer);
+                    return;
+                }
+
+                board = children[index];
+            }
+
+            Console.WriteLine("Final Board:");
+            Console.WriteLine(board);
+            Console.WriteLine("Final Score: {0}", board.Score);
+            if (board.Score > 0) {
+                Console.WriteLine("Black wins!");
+            } else if (board.Score < 0) {
+                Console.WriteLine("White wins!");
+            } else {
+                Console.WriteLine("The game is a draw.");
+            }
         }
 
         #region Test Code
@@ -30,8 +76,7 @@ namespace Othello {
             List<OthelloNode> children = new OthelloNode().GetChildren();
 
             Console.WriteLine("Initial board has {0} children:", children.Count);
-            children.ForEach(Console.Write);
-            Console.WriteLine();
+            Console.WriteLine(OthelloNode.PrintNodes(4, true, children.ToArray()));
         }
 
         // The Perft method for testing move generation functions: evaluate the entire game
