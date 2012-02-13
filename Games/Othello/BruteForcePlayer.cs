@@ -18,8 +18,8 @@ namespace Othello {
         }
 
         public BruteForcePlayer(int depth, Func<OthelloNode, int> evaluator) {
-            if (depth < 0) {
-                throw new ArgumentOutOfRangeException("depth cannot be negative");
+            if (depth <= 0) {
+                throw new ArgumentOutOfRangeException("must be positive");
             }
 
             if (evaluator == null) {
@@ -39,7 +39,7 @@ namespace Othello {
             var children = node.GetChildren();
             if (children.Count == 0) {
                 this.nodesEvaluated++;
-                return this.evaluator(node);
+                return node.PieceCount() << 16;
             }
 
             if (depth == 1) {

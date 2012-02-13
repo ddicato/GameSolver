@@ -233,8 +233,8 @@ namespace Othello
             return children;
         }
 
-        // TODO: make this part of node API?
-        private void GetChildren(List<OthelloNode> children) {
+        // TODO: make this part of node API, and implement GetChildren() in the abstract class
+        public void GetChildren(List<OthelloNode> children) {
             children.Clear();
 
             ulong self = this.board[this.turn];

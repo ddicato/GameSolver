@@ -11,10 +11,16 @@ namespace Othello {
             const bool verbose = false;
             const int games = 100;
 
-            Player<OthelloNode> black = new RandomPlayer();
+            List<OthelloNode> temp = new List<OthelloNode>();
+            Player<OthelloNode> black = new BruteForcePlayer(
+                3,
+                board => {
+                    board.GetChildren(temp);
+                    return temp.Count;
+                });
             Player<OthelloNode> white = new BruteForcePlayer(
                 1,
-                board => board.MonteCarlo(20));
+                board => board.MonteCarlo(5));
 
             int totalScore = 0;
             int blackWins = 0;
