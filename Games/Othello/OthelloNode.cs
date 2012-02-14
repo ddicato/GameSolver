@@ -10,6 +10,7 @@ namespace Othello
     public class OthelloNode : TwoPlayerNode<OthelloNode> {
         // TODO: change to SELF/OTHER and remove turn? change board[] to 2 ulong fields?
         // TODO: Remove Turn and PlayerCount?
+        // TODO: replace with enum
         public const int BLACK = 0;
         public const int WHITE = 1;
 

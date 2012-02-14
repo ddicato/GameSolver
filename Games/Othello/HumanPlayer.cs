@@ -7,7 +7,7 @@ using Solver;
 
 namespace Othello {
     public class HumanPlayer : Player<OthelloNode> {
-        public int SelectNode(IList<OthelloNode> nodes) {
+        public int SelectNode(List<OthelloNode> nodes) {
             if (nodes == null || nodes.Count == 0) {
                 Console.WriteLine("No legal moves! Passing.");
                 return -1;

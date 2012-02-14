@@ -5,6 +5,6 @@ using System.Text;
 
 namespace Solver {
     public interface Player<Node> where Node : Node<Node> {
-        int SelectNode(IList<Node> nodes);
+        int SelectNode(List<Node> nodes);
     }
 }

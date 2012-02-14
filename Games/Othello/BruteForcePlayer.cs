@@ -12,6 +12,8 @@ namespace Othello {
 
         private int nodesEvaluated = 0;
 
+        private readonly List<List<OthelloNode>> nodeCache = new List<List<OthelloNode>>();
+
         public bool Verbose {
             get;
             set;
@@ -28,6 +30,17 @@ namespace Othello {
 
             this.depth = depth;
             this.evaluator = evaluator;
+
+            this.Verbose = true;
+        }
+
+        private void Initialize()
+        {
+            this.nodesEvaluated = 0;
+            while (this.nodeCache.Count < this.depth)
+            {
+                this.nodeCache.Add(new List<OthelloNode>());
+            }
         }
 
         private int Evaluate(OthelloNode node, int depth) {
@@ -36,7 +49,8 @@ namespace Othello {
                 return this.evaluator(node);
             }
 
-            var children = node.GetChildren();
+            var children = this.nodeCache[depth - 1];
+            node.GetChildren(children);
             if (children.Count == 0) {
                 this.nodesEvaluated++;
                 return node.PieceCount() << 16;
@@ -44,27 +58,42 @@ namespace Othello {
 
             if (depth == 1) {
                 this.nodesEvaluated += children.Count;
-                return children.Max(this.evaluator);
+                return -children.Min(child => this.evaluator(child));
             }
 
-            return children.Max(child => this.Evaluate(child, depth - 1));
+            return -children.Min(child => this.Evaluate(child, depth - 1));
         }
 
-        public int SelectNode(IList<OthelloNode> nodes) {
+        public int SelectNode(List<OthelloNode> nodes) {
             if (nodes == null || nodes.Count == 0) {
                 return -1;
             } else if (nodes.Count == 1) {
                 return 0;
             }
 
+            this.Initialize();
+
             int best = 0;
-            int bestScore = int.MaxValue;
+            int bestScore = int.MinValue;
+
+            DateTime start = DateTime.Now;
             for (int i = 0; i < nodes.Count; i++) {
-                int score = this.Evaluate(nodes[i], this.depth);
-                if (bestScore == int.MaxValue || score < bestScore) {
+                int score = -this.Evaluate(nodes[i], this.depth);
+                if (score > bestScore) {
                     best = i;
                     bestScore = score;
                 }
+            }
+            TimeSpan elapsed = DateTime.Now - start;
+
+            if (this.Verbose)
+            {
+                Console.WriteLine("Final score: {0}", bestScore);
+                Console.WriteLine("Searched {0} nodes in {1:0.000} sec ({2:0.000} nodes/s)",
+                    nodesEvaluated,
+                    elapsed.TotalSeconds,
+                    nodesEvaluated / elapsed.TotalSeconds);
+                Console.WriteLine();
             }
 
             return best;

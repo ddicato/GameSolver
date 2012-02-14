@@ -27,7 +27,7 @@ namespace OthelloWpf {
         private static Brush EmptyPieceBrush = new SolidColorBrush(Colors.Transparent);
         private static Brush BlackPieceBrush = new SolidColorBrush(Colors.Black);
         private static Brush WhitePieceBrush = new SolidColorBrush(Colors.White);
-        private static Brush BlackMoveBrush = new SolidColorBrush(Color.FromArgb(96, 0, 0, 0));
+        private static Brush BlackMoveBrush = new SolidColorBrush(Color.FromArgb(84, 0, 0, 0));
         private static Brush WhiteMoveBrush = new SolidColorBrush(Color.FromArgb(96, 255, 255, 255));
 
         private Rectangle[,] squares = new Rectangle[8, 8];
@@ -53,8 +53,11 @@ namespace OthelloWpf {
                 }
             }
 
-            this.blackPlayer = new BruteForcePlayer(1, board => board.MonteCarlo(500));
-            this.whitePlayer = new BruteForcePlayer(2, board => board.MonteCarlo(50));
+            //this.blackPlayer = new BruteForcePlayer(3, board => board.MonteCarlo(50));
+            this.whitePlayer = new BruteForcePlayer(3, board => board.MonteCarlo(100));
+
+            //this.blackPlayer = new RandomPlayer();
+            //this.whitePlayer= new RandomPlayer();
         }
 
         private void InitGame() {
@@ -172,7 +175,7 @@ namespace OthelloWpf {
         }
 
         // TODO: implement Player<OthelloNode> interface
-        public int SelectNode(IList<OthelloNode> children) {
+        public int SelectNode(List<OthelloNode> children) {
             if (children == null || children.Count == 0) {
                 // TODO: wait for 'pass' button to get clicked?
                 return -1;
@@ -196,11 +199,13 @@ namespace OthelloWpf {
                         i = this.moveI;
                         j = this.moveJ;
 
-                        for (int k = 0; k < children.Count; k++) {
-                            if ((OthelloNode.Square[i, j] & this.board.Occupied) == 0 &&
-                                (OthelloNode.Square[i, j] & children[k].Occupied) != 0) {
-                                return k;
-                            }
+                        ulong square = OthelloNode.Square[i, j];
+                        int index = children.FindIndex(child =>
+                            (square & this.board.Occupied) == 0 &&
+                            (square & child.Occupied) != 0);
+                        if (index >= 0)
+                        {
+                            return index;
                         }
 
                         // TODO: notify invalid move
