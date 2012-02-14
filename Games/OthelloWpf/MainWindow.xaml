@@ -13,7 +13,7 @@
             
             <Style TargetType="Ellipse">
                 <Setter Property="Margin" Value="5" />
-                <Setter Property="Fill" Value="Black" />
+                <Setter Property="Fill" Value="Transparent" />
                 <EventSetter Event="MouseDown" Handler="Square_MouseDown" />
             </Style>
             

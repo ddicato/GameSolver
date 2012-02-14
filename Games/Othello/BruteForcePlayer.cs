@@ -46,16 +46,22 @@ namespace Othello {
                 this.nodesEvaluated += children.Count;
                 return children.Max(this.evaluator);
             }
-            
+
             return children.Max(child => this.Evaluate(child, depth - 1));
         }
 
         public int SelectNode(IList<OthelloNode> nodes) {
-            int best = -1;
-            int bestScore = int.MinValue;
+            if (nodes == null || nodes.Count == 0) {
+                return -1;
+            } else if (nodes.Count == 1) {
+                return 0;
+            }
+
+            int best = 0;
+            int bestScore = int.MaxValue;
             for (int i = 0; i < nodes.Count; i++) {
                 int score = this.Evaluate(nodes[i], this.depth);
-                if (bestScore == int.MinValue || score > bestScore) {
+                if (bestScore == int.MaxValue || score < bestScore) {
                     best = i;
                     bestScore = score;
                 }

@@ -52,6 +52,9 @@ namespace OthelloWpf {
                     this.pieces[i, j] = typeof(MainWindow).GetField("Ellipse" + i + j, bindingFlags).GetValue(this) as Ellipse;
                 }
             }
+
+            this.blackPlayer = new BruteForcePlayer(1, board => board.MonteCarlo(500));
+            this.whitePlayer = new BruteForcePlayer(2, board => board.MonteCarlo(50));
         }
 
         private void InitGame() {
