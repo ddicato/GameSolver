@@ -24,6 +24,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GraphLib", "GraphLib\GraphL
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{4CFC33DB-6EB7-42BE-B3EC-97E4056A5919}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OthelloWpf", "Games\OthelloWpf\OthelloWpf.csproj", "{F07ED090-6B1A-4343-BC54-E41D3F9139C4}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -114,6 +116,16 @@ Global
 		{2210FE88-770C-4E71-BF33-5A4D4FC42CBD}.Release|Mixed Platforms.ActiveCfg = Release|Any CPU
 		{2210FE88-770C-4E71-BF33-5A4D4FC42CBD}.Release|Mixed Platforms.Build.0 = Release|Any CPU
 		{2210FE88-770C-4E71-BF33-5A4D4FC42CBD}.Release|x86.ActiveCfg = Release|Any CPU
+		{F07ED090-6B1A-4343-BC54-E41D3F9139C4}.Debug|Any CPU.ActiveCfg = Debug|x86
+		{F07ED090-6B1A-4343-BC54-E41D3F9139C4}.Debug|Mixed Platforms.ActiveCfg = Debug|x86
+		{F07ED090-6B1A-4343-BC54-E41D3F9139C4}.Debug|Mixed Platforms.Build.0 = Debug|x86
+		{F07ED090-6B1A-4343-BC54-E41D3F9139C4}.Debug|x86.ActiveCfg = Debug|x86
+		{F07ED090-6B1A-4343-BC54-E41D3F9139C4}.Debug|x86.Build.0 = Debug|x86
+		{F07ED090-6B1A-4343-BC54-E41D3F9139C4}.Release|Any CPU.ActiveCfg = Release|x86
+		{F07ED090-6B1A-4343-BC54-E41D3F9139C4}.Release|Mixed Platforms.ActiveCfg = Release|x86
+		{F07ED090-6B1A-4343-BC54-E41D3F9139C4}.Release|Mixed Platforms.Build.0 = Release|x86
+		{F07ED090-6B1A-4343-BC54-E41D3F9139C4}.Release|x86.ActiveCfg = Release|x86
+		{F07ED090-6B1A-4343-BC54-E41D3F9139C4}.Release|x86.Build.0 = Release|x86
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -125,5 +137,6 @@ Global
 		{DA8592D7-C60B-4817-B8E5-1A60D303E5E0} = {6891B35C-3446-49E1-BF54-2A48A4A94B03}
 		{F373857B-75AA-40B5-A49B-922B20C615A5} = {6891B35C-3446-49E1-BF54-2A48A4A94B03}
 		{4983D8DE-0560-43C0-93F0-7CF5F103CD48} = {6891B35C-3446-49E1-BF54-2A48A4A94B03}
+		{F07ED090-6B1A-4343-BC54-E41D3F9139C4} = {6891B35C-3446-49E1-BF54-2A48A4A94B03}
 	EndGlobalSection
 EndGlobal

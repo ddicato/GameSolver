@@ -17,17 +17,32 @@ namespace Othello
         private int turn;
 
         // True if the previous player's move was a pass.
-        internal bool pass = false;
+        public bool Pass {
+            get;
+            private set;
+        }
 
         public override int Turn {
             get { return this.turn; }
+        }
+
+        public ulong BlackBoard {
+            get { return this.board[BLACK]; }
+        }
+
+        public ulong WhiteBoard {
+            get { return this.board[WHITE]; }
+        }
+
+        public ulong Occupied {
+            get { return this.board[BLACK] | this.board[WHITE]; }
         }
 
         private OthelloNode(int turn, ulong self, ulong other, bool pass = false) {
             this.turn = turn;
             this.board[turn] = self;
             this.board[(turn + 1) & 1] = other;
-            this.pass = pass;
+            this.Pass = pass;
         }
 
         public OthelloNode() : this(
@@ -42,7 +57,7 @@ namespace Othello
             get {
                 // TODO: make this more efficient with caching
                 return BitCount(this.board[BLACK] | this.board[WHITE]) == 64 ||
-                    (this.pass && this.GetChildren().Count == 0);
+                    (this.Pass && this.GetChildren().Count == 0);
             }
         }
 
@@ -71,8 +86,8 @@ namespace Othello
         // position in a 64-bit int. e.g. square 57, or (1,7), is occupied by white if:
         //     board[1] & (1ul << 57) != 0
 
-        private static readonly ulong[,] Square;
-        private static readonly ulong[,] Adjacent;
+        public static readonly ulong[,] Square;
+        public static readonly ulong[,] Adjacent;
 
         private static readonly ulong[] Row;
         private static readonly ulong[] Column;
@@ -355,7 +370,7 @@ namespace Othello
 
             // If there are no legal moves, we're forced to pass. If the previous
             // turn was a pass, then the game is over.
-            if (!this.pass && children.Count == 0) {
+            if (!this.Pass && children.Count == 0) {
                 children.Add(
                     new OthelloNode(
                         (this.turn + 1) & 1,
@@ -507,7 +522,7 @@ namespace Othello
                     first = false;
                     sb.Append("Turn = ");
                     sb.Append(node.turn == BLACK ? black : white);
-                    sb.Append(node.pass ? '*' : ' ');
+                    sb.Append(node.Pass ? '*' : ' ');
                     sb.Append("      ");
                 }
                 sb.AppendLine();
