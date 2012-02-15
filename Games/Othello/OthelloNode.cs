@@ -35,6 +35,16 @@ namespace Othello
             get { return this.board[WHITE]; }
         }
 
+        public ulong PlayerBoard
+        {
+            get { return this.turn == BLACK ? this.BlackBoard : this.WhiteBoard; }
+        }
+
+        public ulong OtherBoard
+        {
+            get { return this.turn == BLACK ? this.WhiteBoard : this.BlackBoard; }
+        }
+
         public ulong Occupied {
             get { return this.board[BLACK] | this.board[WHITE]; }
         }
@@ -558,6 +568,28 @@ namespace Othello
 
         public override string ToString() {
             return PrintNodes(1, true, this);
+        }
+
+        public void PrintScore()
+        {
+            if (!this.IsGameOver)
+            {
+                return;
+            }
+
+            Console.Write("Final Score: {0}", this.Score);
+            if (this.Score > 0)
+            {
+                Console.WriteLine(" (Black wins)");
+            }
+            else if (this.Score < 0)
+            {
+                Console.WriteLine(" (White wins)");
+            }
+            else
+            {
+                Console.WriteLine(" (The game is a draw)");
+            }
         }
 
         #endregion

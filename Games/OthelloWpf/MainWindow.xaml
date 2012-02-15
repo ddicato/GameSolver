@@ -8,13 +8,15 @@
                 <Setter Property="Fill" Value="ForestGreen" />
                 <Setter Property="Height" Value="40" />
                 <Setter Property="Width" Value="40" />
-                <EventSetter Event="MouseDown" Handler="Square_MouseDown" />
+                <EventSetter Event="MouseLeftButtonDown" Handler="Shape_MouseLeftButtonDown" />
             </Style>
             
             <Style TargetType="Ellipse">
                 <Setter Property="Margin" Value="5" />
                 <Setter Property="Fill" Value="Transparent" />
-                <EventSetter Event="MouseDown" Handler="Square_MouseDown" />
+                <EventSetter Event="MouseLeftButtonDown" Handler="Shape_MouseLeftButtonDown" />
+                <EventSetter Event="MouseRightButtonDown" Handler="Ellipse_MouseRightButtonDown" />
+                <EventSetter Event="MouseRightButtonUp" Handler="Ellipse_MouseRightButtonUp" />
             </Style>
             
             <Style TargetType="Button">

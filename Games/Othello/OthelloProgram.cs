@@ -89,14 +89,7 @@ namespace Othello {
                 Console.WriteLine("Final Board:");
                 Console.WriteLine(board);
             }
-            Console.Write("Final Score: {0}", board.Score);
-            if (board.Score > 0) {
-                Console.WriteLine(" (Black wins)");
-            } else if (board.Score < 0) {
-                Console.WriteLine(" (White wins)");
-            } else {
-                Console.WriteLine(" (The game is a draw)");
-            }
+            board.PrintScore();
 
             return board.Score;
         }

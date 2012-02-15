@@ -99,6 +99,8 @@ namespace OthelloWpf {
                 this.board = children[index];
                 this.UpdateBoard();
             }
+            
+            board.PrintScore();
         }
 
         // TODO: make it possible to edit the board before starting a game
@@ -122,15 +124,24 @@ namespace OthelloWpf {
             this.InitGame();
         }
 
-        private void Square_MouseDown(object sender, MouseButtonEventArgs e) {
+        private static bool GetCoordinates(object sender, out int column, out int row)
+        {
+            column = row = 0;
             Shape shape = sender as Shape;
-            if (shape == null) {
-                return;
+            if (shape == null)
+            {
+                return false;
             }
 
-            int row = Grid.GetRow(shape);
-            int column = Grid.GetColumn(shape);
-            if (row < 0 || column < 0 || row >= 8 || column >= 8) {
+            row = Grid.GetRow(shape);
+            column = Grid.GetColumn(shape);
+            return row >= 0 && column >= 0 && row < 8 && column < 8;
+        }
+
+        private void Shape_MouseLeftButtonDown(object sender, MouseButtonEventArgs e) {
+            int column, row;
+            if (!GetCoordinates(sender, out column, out row))
+            {
                 return;
             }
 
@@ -141,6 +152,34 @@ namespace OthelloWpf {
                     this.waitingForMove = false;
                 }
             }
+        }
+
+        private void Ellipse_MouseRightButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            int i, j;
+            if (!GetCoordinates(sender, out i, out j) ||
+                (GetLegalMoves(this.board) & OthelloNode.Square[i, j]) == 0) {
+                return;
+            }
+
+            this.UpdateBoard(this.board.GetChildren().Find(child =>
+                (child.OtherBoard & OthelloNode.Square[i, j]) != 0));
+        }
+
+        private void Ellipse_MouseRightButtonUp(object sender, MouseButtonEventArgs e)
+        {
+            this.UpdateBoard();
+        }
+
+        private static ulong GetLegalMoves(OthelloNode board)
+        {
+            ulong moves = 0ul;
+            foreach (OthelloNode child in board.GetChildren())
+            {
+                moves |= child.Occupied;
+            }
+
+            return moves ^ board.Occupied;
         }
 
         private void ClearPieces() {
@@ -157,19 +196,21 @@ namespace OthelloWpf {
             }
         }
 
-        private void UpdateBoard() {
+        private void UpdateBoard()
+        {
+            this.UpdateBoard(this.board);
+        }
+
+        private void UpdateBoard(OthelloNode board) {
             this.Dispatcher.Invoke(new Action(delegate() {
                 this.ClearPieces();
-                if (this.board != null) {
-                    this.UpdatePieces(BlackPieceBrush, this.board.BlackBoard);
-                    this.UpdatePieces(WhitePieceBrush, this.board.WhiteBoard);
+                if (board != null) {
+                    this.UpdatePieces(BlackPieceBrush, board.BlackBoard);
+                    this.UpdatePieces(WhitePieceBrush, board.WhiteBoard);
 
-                    ulong moves = 0ul;
-                    foreach (OthelloNode child in this.board.GetChildren()) {
-                        moves |= child.Occupied;
-                    }
-                    moves ^= this.board.Occupied;
-                    this.UpdatePieces(this.board.Turn == OthelloNode.BLACK ? BlackMoveBrush : WhiteMoveBrush, moves);
+                    this.UpdatePieces(
+                        board.Turn == OthelloNode.BLACK ? BlackMoveBrush : WhiteMoveBrush,
+                        GetLegalMoves(board));
                 }
             }));
         }
