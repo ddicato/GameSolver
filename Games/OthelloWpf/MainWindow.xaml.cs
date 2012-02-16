@@ -53,8 +53,8 @@ namespace OthelloWpf {
                 }
             }
 
-            //this.blackPlayer = new BruteForcePlayer(3, board => board.MonteCarlo(50));
-            this.whitePlayer = new BruteForcePlayer(3, board => board.MonteCarlo(100));
+            //this.blackPlayer = new BruteForcePlayer(4, board => board.PotentialMobilitySpread());
+            this.whitePlayer = new BruteForcePlayer(4, board => board.FrontierSpread());
 
             //this.blackPlayer = new RandomPlayer();
             //this.whitePlayer= new RandomPlayer();

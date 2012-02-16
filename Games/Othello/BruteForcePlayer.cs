@@ -19,7 +19,7 @@ namespace Othello {
             set;
         }
 
-        public BruteForcePlayer(int depth, Func<OthelloNode, int> evaluator) {
+        public BruteForcePlayer(int depth, Func<OthelloNode, int> evaluator, bool verbose = false) {
             if (depth <= 0) {
                 throw new ArgumentOutOfRangeException("must be positive");
             }
@@ -31,7 +31,7 @@ namespace Othello {
             this.depth = depth;
             this.evaluator = evaluator;
 
-            this.Verbose = true;
+            this.Verbose = verbose;
         }
 
         private void Initialize()
@@ -76,6 +76,11 @@ namespace Othello {
             int best = 0;
             int bestScore = int.MinValue;
 
+            if (this.Verbose)
+            {
+                Console.Write("Searching at depth {0}... ", this.depth);
+            }
+
             DateTime start = DateTime.Now;
             for (int i = 0; i < nodes.Count; i++) {
                 int score = -this.Evaluate(nodes[i], this.depth);
@@ -88,11 +93,11 @@ namespace Othello {
 
             if (this.Verbose)
             {
-                Console.WriteLine("Final score: {0}", bestScore);
-                Console.WriteLine("Searched {0} nodes in {1:0.000} sec ({2:0.000} nodes/s)",
+                Console.WriteLine("Score: {0}. Searched {1} nodes in {2:0.000} sec ({3:0.000} nodes/ms)",
+                    bestScore,
                     nodesEvaluated,
                     elapsed.TotalSeconds,
-                    nodesEvaluated / elapsed.TotalSeconds);
+                    nodesEvaluated / elapsed.TotalMilliseconds);
                 Console.WriteLine();
             }
 

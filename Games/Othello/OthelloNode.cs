@@ -400,17 +400,75 @@ namespace Othello
         }
 
         // TODO: merge some of these functions so that we only iterate once
-        public int Frontiers() {
+        public int Frontiers()
+        {
             ulong self = this.board[this.turn];
             ulong occupied = self | this.board[(this.turn + 1) & 1];
 
             int total = 0;
 
-            for (int j = 0; j < 8; j++) {
-                for (int i = 0; i < 8; i++) {
+            for (int j = 0; j < 8; j++)
+            {
+                for (int i = 0; i < 8; i++)
+                {
                     ulong square = Square[i, j];
+                    ulong adjacent = Adjacent[i, j];
                     if ((self & square) != 0 &&
-                        (Adjacent[i, j] & occupied) != 0) {
+                        (adjacent & occupied) != adjacent)
+                    {
+                        total++;
+                    }
+                }
+            }
+
+            return total;
+        }
+
+        public int FrontierSpread()
+        {
+            ulong self = this.board[this.turn];
+            ulong other = this.board[(this.turn + 1) & 1];
+            ulong occupied = self | other;
+
+            int total = 0;
+
+            for (int j = 0; j < 8; j++)
+            {
+                for (int i = 0; i < 8; i++)
+                {
+                    ulong square = Square[i, j];
+                    ulong adjacent = Adjacent[i, j];
+                    if ((adjacent & occupied) != adjacent)
+                    {
+                        if ((self & square) != 0)
+                        {
+                            total++;
+                        } else if ((other & square) != 0)
+                        {
+                            total--;
+                        }
+                    }
+                }
+            }
+
+            return total;
+        }
+
+        // Potential mobility is the number of empty squares next to an opponent's piece. It provides an
+        // approximation for mobility, but at a smaller performance cost.
+        public int PotentialMobility()
+        {
+            ulong other = this.board[(this.turn + 1) & 1];
+            ulong occupied = other | this.board[this.turn];
+
+            int total = 0;
+            for (int j = 0; j < 8; j++)
+            {
+                for (int i = 0; i < 8; i++)
+                {
+                    if ((Square[i, j] & occupied) == 0 &&
+                        (other & Adjacent[i, j]) != 0)
+                    {
                         total++;
                     }
                 }
@@ -421,20 +479,28 @@ namespace Othello
 
         // Potential mobility is the number of empty squares next to an opponent's piece. It provides an
         // approximation for mobility, but at a smaller performance cost.
-        public int PotentialMobility() {
+        public int PotentialMobilitySpread()
+        {
+            ulong self = this.board[this.turn];
             ulong other = this.board[(this.turn + 1) & 1];
-            ulong occupied = other | this.board[this.turn];
+            ulong occupied = self | other;
 
             int total = 0;
-            for (int j = 0; j < 8; j++) {
-                for (int i = 0; i < 8; i++) {
-                    if ((Square[i, j] & occupied) != 0) {
-                        continue;
-                    }
-
-                    ulong adjacent = Adjacent[i, j];
-                    if ((other & adjacent) != 0) {
-                        total++;
+            for (int j = 0; j < 8; j++)
+            {
+                for (int i = 0; i < 8; i++)
+                {
+                    if ((Square[i, j] & occupied) == 0)
+                    {
+                        ulong adjacent = Adjacent[i, j];
+                        if ((other & adjacent) != 0)
+                        {
+                            total++;
+                        }
+                        if ((self & adjacent) != 0)
+                        {
+                            total--;
+                        }
                     }
                 }
             }

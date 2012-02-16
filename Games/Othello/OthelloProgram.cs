@@ -9,21 +9,33 @@ namespace Othello {
     class OthelloProgram {
         static void Main(string[] args) {
             const bool verbose = false;
-            const int games = 100;
+            const int games = 1;
 
             List<OthelloNode> temp = new List<OthelloNode>();
             Player<OthelloNode> black = new BruteForcePlayer(
-                3,
-                board => board.PotentialMobility());
-            Player<OthelloNode> white = new BruteForcePlayer(
-                1,
-                board => board.MonteCarlo(5));
+                4,
+                board => board.PotentialMobilitySpread() * 2 - board.FrontierSpread(),
+                verbose: true);
+            Player<OthelloNode> white = new AlphaBetaPlayer(
+                6,
+                board => board.PotentialMobilitySpread() * 2 - board.FrontierSpread(),
+                verbose: true);
 
+            PlayGames(black, white, games, verbose);
+
+            Console.WriteLine("Press Enter to exit.");
+            Console.ReadLine();
+        }
+
+        private static void PlayGames(Player<OthelloNode> black, Player<OthelloNode> white, int games = 1, bool verbose = false)
+        {
             int totalScore = 0;
             int blackWins = 0;
             int whiteWins = 0;
-            for (int i = 0; i < games; i++) {
-                if (i > 0) {
+            for (int i = 0; i < games; i++)
+            {
+                if (i > 0)
+                {
                     Console.WriteLine();
                 }
                 Console.WriteLine("Game {0} of {1}", i + 1, games);
@@ -31,9 +43,12 @@ namespace Othello {
                 int result = GameLoop(black, white, verbose);
 
                 totalScore += result;
-                if (result > 0) {
+                if (result > 0)
+                {
                     blackWins++;
-                } else if (result < 0) {
+                }
+                else if (result < 0)
+                {
                     whiteWins++;
                 }
 
@@ -46,9 +61,6 @@ namespace Othello {
                 blackWins,
                 whiteWins,
                 games - blackWins - whiteWins);
-
-            Console.WriteLine("Press Enter to exit.");
-            Console.ReadLine();
         }
 
         private static int GameLoop(Player<OthelloNode> black, Player<OthelloNode> white, bool verbose = false) {

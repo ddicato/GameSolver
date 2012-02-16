@@ -75,6 +75,7 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="AlphaBetaPlayer.cs" />
     <Compile Include="HumanPlayer.cs" />
     <Compile Include="BruteForcePlayer.cs" />
     <Compile Include="OthelloNode.cs" />
