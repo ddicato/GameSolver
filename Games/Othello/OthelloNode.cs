@@ -35,11 +35,11 @@ namespace Othello {
         }
 
         public ulong PlayerBoard {
-            get { return this.turn == BLACK ? this.BlackBoard : this.WhiteBoard; }
+            get { return this.board[this.turn]; }
         }
 
         public ulong OtherBoard {
-            get { return this.turn == BLACK ? this.WhiteBoard : this.BlackBoard; }
+            get { return this.board[(this.turn + 1) & 1]; }
         }
 
         public ulong Occupied {
@@ -97,6 +97,8 @@ namespace Othello {
 
         public static readonly ulong[,] Square;
         public static readonly ulong[,] Adjacent;
+
+        private const ulong Corners = (1ul << 63) | (1ul << 56) | (1ul << 7) | 1ul;
 
         private static readonly ulong[] Row;
         private static readonly ulong[] Column;
@@ -393,7 +395,7 @@ namespace Othello {
 
         #region Heuristics
 
-        public int PieceCount() {
+        public int PieceCountSpread() {
             return BitCount(this.board[this.turn]) - BitCount(this.board[(this.turn + 1) & 1]);
         }
 
@@ -401,13 +403,7 @@ namespace Othello {
             ulong self = this.board[this.turn];
             ulong other = this.board[(this.turn + 1) & 1];
 
-            // TODO: make const
-            ulong corners = OthelloNode.Square[0, 0] |
-                OthelloNode.Square[0, 7] |
-                OthelloNode.Square[7, 0] |
-                OthelloNode.Square[7, 7];
-
-            return BitCount(self & corners) - BitCount(other & corners);
+            return BitCount(self & Corners) - BitCount(other & Corners);
         }
 
         // TODO: merge some of these functions so that we only iterate once

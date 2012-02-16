@@ -9,22 +9,24 @@ namespace Othello {
     class OthelloProgram {
         static void Main(string[] args) {
             const bool verbose = false;
-            const int games = 1;
+            const int games = 100;
 
             List<OthelloNode> temp = new List<OthelloNode>();
-            Player<OthelloNode> black = new BruteForcePlayer(
-                4,
-                board => board.PotentialMobilitySpread() * 2 - board.FrontierSpread(),
-                verbose: true);
-            Player<OthelloNode> white = new AlphaBetaPlayer(
-                6,
-                board => board.PotentialMobilitySpread() * 2 - board.FrontierSpread(),
-                verbose: true);
+            Player<OthelloNode> black = new AlphaBetaPlayer(4, Eval0, verbose: false, randomness: true);
+            Player<OthelloNode> white = new AlphaBetaPlayer(4, Eval1, verbose: false, randomness: true);
 
             PlayGames(black, white, games, verbose);
 
             Console.WriteLine("Press Enter to exit.");
             Console.ReadLine();
+        }
+
+        private static int Eval0(OthelloNode node) {
+            return node.PotentialMobilitySpread() * 2 - node.FrontierSpread() + 8 * node.CornerSpread();
+        }
+
+        private static int Eval1(OthelloNode node) {
+            return node.PotentialMobilitySpread() * 2 - node.FrontierSpread() + 6 * node.CornerSpread();
         }
 
         private static void PlayGames(Player<OthelloNode> black, Player<OthelloNode> white, int games = 1, bool verbose = false) {
@@ -55,6 +57,7 @@ namespace Othello {
                 blackWins,
                 whiteWins,
                 games - blackWins - whiteWins);
+            Console.WriteLine();
         }
 
         private static int GameLoop(Player<OthelloNode> black, Player<OthelloNode> white, bool verbose = false) {

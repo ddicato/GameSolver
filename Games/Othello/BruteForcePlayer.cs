@@ -51,7 +51,7 @@ namespace Othello {
             node.GetChildren(children);
             if (children.Count == 0) {
                 this.nodesEvaluated++;
-                return node.PieceCount() << 16;
+                return node.PieceCountSpread() << 16;
             }
 
             if (depth == 1) {

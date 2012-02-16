@@ -53,9 +53,10 @@ namespace OthelloWpf {
                 }
             }
 
-            Func<OthelloNode, int> eval = board => board.PotentialMobilitySpread() * 2 - board.FrontierSpread() + 4 * board.CornerSpread();
+            Func<OthelloNode, int> eval = board =>
+                board.PotentialMobilitySpread() * 2 - board.FrontierSpread() + 6 * board.CornerSpread();
 
-            this.blackPlayer = new BruteForcePlayer(4, eval, verbose: true);
+            this.blackPlayer = new AlphaBetaPlayer(6, eval, verbose: true);
             this.whitePlayer = new AlphaBetaPlayer(6, eval, verbose: true);
 
             //this.blackPlayer = new RandomPlayer();
@@ -73,42 +74,48 @@ namespace OthelloWpf {
             this.UpdateBoard();
 
             this.StartButton.IsEnabled = true;
+            this.SwitchButton.IsEnabled = true;
         }
 
         private void GameLoop() {
-            if (this.board == null) {
-                return;
-            }
+            try {
+                if (this.board != null) {
+                    List<OthelloNode> children = new List<OthelloNode>();
+                    while (!this.board.IsGameOver) {
+                        const int monteCarloIters = 0;
+                        if (monteCarloIters > 0) {
+                            Console.Write("Monte-carlo score: ");
+                            int monteCarloScore = board.MonteCarlo(monteCarloIters);
+                            Console.WriteLine("{0:0.000}", monteCarloScore / (double)monteCarloIters);
+                        }
 
-            List<OthelloNode> children = new List<OthelloNode>();
-            while (!this.board.IsGameOver) {
-                const int monteCarloIters = 1000;
-                Console.Write("Monte-carlo score: ");
-                int monteCarloScore = board.MonteCarlo(monteCarloIters);
-                Console.WriteLine("{0:0.000}",
-                    monteCarloScore / (double)monteCarloIters);
+                        this.board.GetChildren(children);
+                        if (children.Count == 0) {
+                            // TODO: error
+                            return;
+                        }
 
-                this.board.GetChildren(children);
-                if (children.Count == 0) {
-                    // TODO: error
-                    return;
+                        int index = ((this.board.Turn == OthelloNode.BLACK ?
+                            this.blackPlayer :
+                            this.whitePlayer) ??
+                            this).SelectNode(children);
+
+                        if (index < 0 || index >= children.Count) {
+                            // TODO: disqualify player
+                            return;
+                        }
+
+                        this.board = children[index];
+                        this.UpdateBoard();
+                    }
+
+                    board.PrintScore();
                 }
-
-                int index = ((this.board.Turn == OthelloNode.BLACK ?
-                    this.blackPlayer :
-                    this.whitePlayer) ??
-                    this).SelectNode(children);
-
-                if (index < 0 || index >= children.Count) {
-                    // TODO: disqualify player
-                    return;
-                }
-
-                this.board = children[index];
-                this.UpdateBoard();
+            } finally {
+                this.Dispatcher.Invoke(new Action(delegate() {
+                    this.SwitchButton.IsEnabled = true;
+                }));
             }
-
-            board.PrintScore();
         }
 
         // TODO: make it possible to edit the board before starting a game
@@ -118,6 +125,7 @@ namespace OthelloWpf {
 
         private void StartButton_Click(object sender, RoutedEventArgs e) {
             this.StartButton.IsEnabled = false;
+            this.SwitchButton.IsEnabled = false;
 
             if (this.computationThread != null) {
                 this.computationThread.Abort();
@@ -132,7 +140,13 @@ namespace OthelloWpf {
             this.InitGame();
         }
 
-        private static bool GetCoordinates(object sender, out int column, out int row) {
+        private void SwitchButton_Click(object sender, RoutedEventArgs e) {
+            Player<OthelloNode> temp = this.blackPlayer;
+            this.blackPlayer = this.whitePlayer;
+            this.whitePlayer = temp;
+        }
+
+        private static bool TryGetCoordinates(object sender, out int column, out int row) {
             column = row = 0;
             Shape shape = sender as Shape;
             if (shape == null) {
@@ -146,7 +160,7 @@ namespace OthelloWpf {
 
         private void Shape_MouseLeftButtonDown(object sender, MouseButtonEventArgs e) {
             int column, row;
-            if (!GetCoordinates(sender, out column, out row)) {
+            if (!TryGetCoordinates(sender, out column, out row)) {
                 return;
             }
 
@@ -161,7 +175,7 @@ namespace OthelloWpf {
 
         private void Ellipse_MouseRightButtonDown(object sender, MouseButtonEventArgs e) {
             int i, j;
-            if (!GetCoordinates(sender, out i, out j) ||
+            if (!TryGetCoordinates(sender, out i, out j) ||
                 (GetLegalMoves(this.board) & OthelloNode.Square[i, j]) == 0) {
                 return;
             }

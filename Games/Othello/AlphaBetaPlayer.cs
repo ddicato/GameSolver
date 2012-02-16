@@ -14,12 +14,35 @@ namespace Othello {
 
         private readonly List<List<OthelloNode>> nodeCache = new List<List<OthelloNode>>();
 
+        private Random random = new Random();
+
         public bool Verbose {
             get;
             set;
         }
 
-        public AlphaBetaPlayer(int depth, Func<OthelloNode, int> evaluator, bool verbose = false) {
+        public bool MoveOrdering {
+            get;
+            set;
+        }
+
+        public bool Randomness {
+            get;
+            set;
+        }
+
+        public bool SolveEndgame {
+            get;
+            set;
+        }
+
+        public AlphaBetaPlayer(
+            int depth,
+            Func<OthelloNode, int> evaluator,
+            bool verbose = false,
+            bool moveOrdering = true,
+            bool solveEndgame = true,
+            bool randomness = false) {
             if (depth <= 0) {
                 throw new ArgumentOutOfRangeException("must be positive");
             }
@@ -32,6 +55,9 @@ namespace Othello {
             this.evaluator = evaluator;
 
             this.Verbose = verbose;
+            this.MoveOrdering = moveOrdering;
+            this.Randomness = randomness;
+            this.SolveEndgame = solveEndgame;
         }
 
         private void Initialize() {
@@ -55,7 +81,7 @@ namespace Othello {
             node.GetChildren(children);
             if (children.Count == 0) {
                 this.nodesEvaluated++;
-                return node.PieceCount() << 16;
+                return node.PieceCountSpread() << 16;
             }
 
             foreach (OthelloNode child in children) {
@@ -76,7 +102,7 @@ namespace Othello {
             node.GetChildren(children);
             if (children.Count == 0) {
                 this.nodesEvaluated++;
-                return node.PieceCount();
+                return node.PieceCountSpread();
             }
 
             foreach (OthelloNode child in children) {
@@ -90,6 +116,11 @@ namespace Othello {
             }
 
             return alpha;
+        }
+
+        private static void OrderMovesDescending(List<Tuple<int, int>> metadata) {
+            // Reverse a and b to sort in descending order
+            metadata.Sort((a, b) => b.Item2.CompareTo(a.Item2));
         }
 
         public int SelectNode(List<OthelloNode> nodes) {
@@ -121,8 +152,8 @@ namespace Othello {
                 }
 
                 // Move ordering by score
-                if (depth > 1) {
-                    metadata.Sort((a, b) => a.Item2.CompareTo(b.Item2));
+                if (this.MoveOrdering && depth > 1) {
+                    OrderMovesDescending(metadata);
                 }
 
                 DateTime start = DateTime.Now;
@@ -151,7 +182,7 @@ namespace Othello {
 
             // Solve endgame if we can
             const int endgameDepthDiff = 6;
-            if (OthelloNode.BitCount(~nodes[0].Occupied) < this.depth + endgameDepthDiff) {
+            if (this.SolveEndgame && OthelloNode.BitCount(~nodes[0].Occupied) < this.depth + endgameDepthDiff) {
                 if (this.Verbose) {
                     Console.Write("Solving endgame... ");
                 }
@@ -179,6 +210,23 @@ namespace Othello {
                         nodesEvaluated,
                         elapsed.TotalSeconds,
                         nodesEvaluated / elapsed.TotalMilliseconds);
+                }
+            } else if (this.Randomness) {
+                // Inject some randomness if we're not solving the endgame
+                OrderMovesDescending(metadata);
+
+                // 50% probability for first item, 50% for remaining. This is applied recursively so we
+                // get, e.g. for 5 items: 50.0%, 25.0%, 12.5%, 6.25%, 6.25%
+                for (int i = 0; i < metadata.Count; i++) {
+                    best = metadata[i].Item1;
+                    bestScore = metadata[i].Item2;
+                    if (this.random.Next(2) == 0) {
+                        break;
+                    }
+                }
+
+                if (this.Verbose) {
+                    Console.WriteLine("Weighted random choice: score = {0}", bestScore);
                 }
             }
 

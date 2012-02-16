@@ -1,7 +1,7 @@
 ﻿<Window x:Class="OthelloWpf.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="MainWindow" Height="425" Width="365">
+        Title="MainWindow" Height="450" Width="365">
     <Window.Resources>
         <ResourceDictionary>
             <Style TargetType="Rectangle">
@@ -344,6 +344,7 @@
             </Grid.ColumnDefinitions>
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
 
             <Button x:Name="ClearButton"
@@ -359,6 +360,13 @@
                     IsEnabled="False"
                     Click="StartButton_Click">
                 Start
+            </Button>
+            
+            <Button x:Name="SwitchButton"
+                    Grid.Row="1"
+                    Grid.Column="0"
+                    Click="SwitchButton_Click">
+                Switch Players
             </Button>
         </Grid>
     </Grid>
