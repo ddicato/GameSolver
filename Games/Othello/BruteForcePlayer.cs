@@ -34,11 +34,9 @@ namespace Othello {
             this.Verbose = verbose;
         }
 
-        private void Initialize()
-        {
+        private void Initialize() {
             this.nodesEvaluated = 0;
-            while (this.nodeCache.Count < this.depth)
-            {
+            while (this.nodeCache.Count < this.depth) {
                 this.nodeCache.Add(new List<OthelloNode>());
             }
         }
@@ -66,8 +64,16 @@ namespace Othello {
 
         public int SelectNode(List<OthelloNode> nodes) {
             if (nodes == null || nodes.Count == 0) {
+                if (this.Verbose) {
+                    Console.WriteLine("No legal moves. Passing.");
+                    Console.WriteLine();
+                }
                 return -1;
             } else if (nodes.Count == 1) {
+                if (this.Verbose) {
+                    Console.WriteLine("One legal move. Skipping game tree search.");
+                    Console.WriteLine();
+                }
                 return 0;
             }
 
@@ -76,8 +82,7 @@ namespace Othello {
             int best = 0;
             int bestScore = int.MinValue;
 
-            if (this.Verbose)
-            {
+            if (this.Verbose) {
                 Console.Write("Searching at depth {0}... ", this.depth);
             }
 
@@ -91,8 +96,7 @@ namespace Othello {
             }
             TimeSpan elapsed = DateTime.Now - start;
 
-            if (this.Verbose)
-            {
+            if (this.Verbose) {
                 Console.WriteLine("Score: {0}. Searched {1} nodes in {2:0.000} sec ({3:0.000} nodes/ms)",
                     bestScore,
                     nodesEvaluated,

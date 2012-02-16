@@ -27,15 +27,12 @@ namespace Othello {
             Console.ReadLine();
         }
 
-        private static void PlayGames(Player<OthelloNode> black, Player<OthelloNode> white, int games = 1, bool verbose = false)
-        {
+        private static void PlayGames(Player<OthelloNode> black, Player<OthelloNode> white, int games = 1, bool verbose = false) {
             int totalScore = 0;
             int blackWins = 0;
             int whiteWins = 0;
-            for (int i = 0; i < games; i++)
-            {
-                if (i > 0)
-                {
+            for (int i = 0; i < games; i++) {
+                if (i > 0) {
                     Console.WriteLine();
                 }
                 Console.WriteLine("Game {0} of {1}", i + 1, games);
@@ -43,12 +40,9 @@ namespace Othello {
                 int result = GameLoop(black, white, verbose);
 
                 totalScore += result;
-                if (result > 0)
-                {
+                if (result > 0) {
                     blackWins++;
-                }
-                else if (result < 0)
-                {
+                } else if (result < 0) {
                     whiteWins++;
                 }
 
@@ -178,7 +172,7 @@ namespace Othello {
         private static void PerftTest() {
             for (uint depth = 1; depth < PerftLeaves.Length; depth++) {
                 Console.WriteLine("Perft test at depth {0}", depth);
-                
+
                 int earlyTerminations = 0;
                 DateTime start = DateTime.Now;
                 long leaves = Perft(new OthelloNode(), depth, ref earlyTerminations);

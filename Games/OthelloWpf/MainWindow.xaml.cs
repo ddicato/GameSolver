@@ -53,8 +53,10 @@ namespace OthelloWpf {
                 }
             }
 
-            //this.blackPlayer = new BruteForcePlayer(4, board => board.PotentialMobilitySpread());
-            this.whitePlayer = new BruteForcePlayer(4, board => board.FrontierSpread());
+            Func<OthelloNode, int> eval = board => board.PotentialMobilitySpread() * 2 - board.FrontierSpread() + 4 * board.CornerSpread();
+
+            this.blackPlayer = new BruteForcePlayer(4, eval, verbose: true);
+            this.whitePlayer = new AlphaBetaPlayer(6, eval, verbose: true);
 
             //this.blackPlayer = new RandomPlayer();
             //this.whitePlayer= new RandomPlayer();
@@ -80,6 +82,12 @@ namespace OthelloWpf {
 
             List<OthelloNode> children = new List<OthelloNode>();
             while (!this.board.IsGameOver) {
+                const int monteCarloIters = 1000;
+                Console.Write("Monte-carlo score: ");
+                int monteCarloScore = board.MonteCarlo(monteCarloIters);
+                Console.WriteLine("{0:0.000}",
+                    monteCarloScore / (double)monteCarloIters);
+
                 this.board.GetChildren(children);
                 if (children.Count == 0) {
                     // TODO: error
@@ -99,7 +107,7 @@ namespace OthelloWpf {
                 this.board = children[index];
                 this.UpdateBoard();
             }
-            
+
             board.PrintScore();
         }
 
@@ -124,12 +132,10 @@ namespace OthelloWpf {
             this.InitGame();
         }
 
-        private static bool GetCoordinates(object sender, out int column, out int row)
-        {
+        private static bool GetCoordinates(object sender, out int column, out int row) {
             column = row = 0;
             Shape shape = sender as Shape;
-            if (shape == null)
-            {
+            if (shape == null) {
                 return false;
             }
 
@@ -140,8 +146,7 @@ namespace OthelloWpf {
 
         private void Shape_MouseLeftButtonDown(object sender, MouseButtonEventArgs e) {
             int column, row;
-            if (!GetCoordinates(sender, out column, out row))
-            {
+            if (!GetCoordinates(sender, out column, out row)) {
                 return;
             }
 
@@ -154,8 +159,7 @@ namespace OthelloWpf {
             }
         }
 
-        private void Ellipse_MouseRightButtonDown(object sender, MouseButtonEventArgs e)
-        {
+        private void Ellipse_MouseRightButtonDown(object sender, MouseButtonEventArgs e) {
             int i, j;
             if (!GetCoordinates(sender, out i, out j) ||
                 (GetLegalMoves(this.board) & OthelloNode.Square[i, j]) == 0) {
@@ -166,16 +170,13 @@ namespace OthelloWpf {
                 (child.OtherBoard & OthelloNode.Square[i, j]) != 0));
         }
 
-        private void Ellipse_MouseRightButtonUp(object sender, MouseButtonEventArgs e)
-        {
+        private void Ellipse_MouseRightButtonUp(object sender, MouseButtonEventArgs e) {
             this.UpdateBoard();
         }
 
-        private static ulong GetLegalMoves(OthelloNode board)
-        {
+        private static ulong GetLegalMoves(OthelloNode board) {
             ulong moves = 0ul;
-            foreach (OthelloNode child in board.GetChildren())
-            {
+            foreach (OthelloNode child in board.GetChildren()) {
                 moves |= child.Occupied;
             }
 
@@ -196,8 +197,7 @@ namespace OthelloWpf {
             }
         }
 
-        private void UpdateBoard()
-        {
+        private void UpdateBoard() {
             this.UpdateBoard(this.board);
         }
 
@@ -244,8 +244,7 @@ namespace OthelloWpf {
                         int index = children.FindIndex(child =>
                             (square & this.board.Occupied) == 0 &&
                             (square & child.Occupied) != 0);
-                        if (index >= 0)
-                        {
+                        if (index >= 0) {
                             return index;
                         }
 

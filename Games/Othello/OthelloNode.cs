@@ -5,8 +5,7 @@ using System.Text;
 
 using Solver;
 
-namespace Othello
-{
+namespace Othello {
     public class OthelloNode : TwoPlayerNode<OthelloNode> {
         // TODO: change to SELF/OTHER and remove turn? change board[] to 2 ulong fields?
         // TODO: Remove Turn and PlayerCount?
@@ -35,13 +34,11 @@ namespace Othello
             get { return this.board[WHITE]; }
         }
 
-        public ulong PlayerBoard
-        {
+        public ulong PlayerBoard {
             get { return this.turn == BLACK ? this.BlackBoard : this.WhiteBoard; }
         }
 
-        public ulong OtherBoard
-        {
+        public ulong OtherBoard {
             get { return this.turn == BLACK ? this.WhiteBoard : this.BlackBoard; }
         }
 
@@ -56,10 +53,11 @@ namespace Othello
             this.Pass = pass;
         }
 
-        public OthelloNode() : this(
-            BLACK,
-            Square[4, 3] | Square[3, 4],
-            Square[3, 3] | Square[4, 4]) {
+        public OthelloNode()
+            : this(
+                BLACK,
+                Square[4, 3] | Square[3, 4],
+                Square[3, 3] | Square[4, 4]) {
         }
 
         // TODO: might need to expand API to tell whose point of view this is from, not
@@ -140,7 +138,7 @@ namespace Othello
                         value |= Square[i, j + 1];
                     }
 
-                    Adjacent[i,j] = value;
+                    Adjacent[i, j] = value;
                 }
             }
 
@@ -233,14 +231,14 @@ namespace Othello
             return unchecked((int)Mix(
                 HashSeed[this.turn],
                 HashULong(this.board[BLACK]),
-                HashULong(this.board[WHITE])) );
+                HashULong(this.board[WHITE])));
         }
 
         #endregion
 
         #region Move Calculations
 
-        internal static int BitCount(ulong value) {
+        public static int BitCount(ulong value) {
             ulong count = value -
                 ((value >> 1) & 0x7777777777777777ul) -
                 ((value >> 2) & 0x3333333333333333ul) -
@@ -399,23 +397,32 @@ namespace Othello
             return BitCount(this.board[this.turn]) - BitCount(this.board[(this.turn + 1) & 1]);
         }
 
+        public int CornerSpread() {
+            ulong self = this.board[this.turn];
+            ulong other = this.board[(this.turn + 1) & 1];
+
+            // TODO: make const
+            ulong corners = OthelloNode.Square[0, 0] |
+                OthelloNode.Square[0, 7] |
+                OthelloNode.Square[7, 0] |
+                OthelloNode.Square[7, 7];
+
+            return BitCount(self & corners) - BitCount(other & corners);
+        }
+
         // TODO: merge some of these functions so that we only iterate once
-        public int Frontiers()
-        {
+        public int Frontiers() {
             ulong self = this.board[this.turn];
             ulong occupied = self | this.board[(this.turn + 1) & 1];
 
             int total = 0;
 
-            for (int j = 0; j < 8; j++)
-            {
-                for (int i = 0; i < 8; i++)
-                {
+            for (int j = 0; j < 8; j++) {
+                for (int i = 0; i < 8; i++) {
                     ulong square = Square[i, j];
                     ulong adjacent = Adjacent[i, j];
                     if ((self & square) != 0 &&
-                        (adjacent & occupied) != adjacent)
-                    {
+                        (adjacent & occupied) != adjacent) {
                         total++;
                     }
                 }
@@ -424,27 +431,21 @@ namespace Othello
             return total;
         }
 
-        public int FrontierSpread()
-        {
+        public int FrontierSpread() {
             ulong self = this.board[this.turn];
             ulong other = this.board[(this.turn + 1) & 1];
             ulong occupied = self | other;
 
             int total = 0;
 
-            for (int j = 0; j < 8; j++)
-            {
-                for (int i = 0; i < 8; i++)
-                {
+            for (int j = 0; j < 8; j++) {
+                for (int i = 0; i < 8; i++) {
                     ulong square = Square[i, j];
                     ulong adjacent = Adjacent[i, j];
-                    if ((adjacent & occupied) != adjacent)
-                    {
-                        if ((self & square) != 0)
-                        {
+                    if ((adjacent & occupied) != adjacent) {
+                        if ((self & square) != 0) {
                             total++;
-                        } else if ((other & square) != 0)
-                        {
+                        } else if ((other & square) != 0) {
                             total--;
                         }
                     }
@@ -456,19 +457,15 @@ namespace Othello
 
         // Potential mobility is the number of empty squares next to an opponent's piece. It provides an
         // approximation for mobility, but at a smaller performance cost.
-        public int PotentialMobility()
-        {
+        public int PotentialMobility() {
             ulong other = this.board[(this.turn + 1) & 1];
             ulong occupied = other | this.board[this.turn];
 
             int total = 0;
-            for (int j = 0; j < 8; j++)
-            {
-                for (int i = 0; i < 8; i++)
-                {
+            for (int j = 0; j < 8; j++) {
+                for (int i = 0; i < 8; i++) {
                     if ((Square[i, j] & occupied) == 0 &&
-                        (other & Adjacent[i, j]) != 0)
-                    {
+                        (other & Adjacent[i, j]) != 0) {
                         total++;
                     }
                 }
@@ -479,26 +476,20 @@ namespace Othello
 
         // Potential mobility is the number of empty squares next to an opponent's piece. It provides an
         // approximation for mobility, but at a smaller performance cost.
-        public int PotentialMobilitySpread()
-        {
+        public int PotentialMobilitySpread() {
             ulong self = this.board[this.turn];
             ulong other = this.board[(this.turn + 1) & 1];
             ulong occupied = self | other;
 
             int total = 0;
-            for (int j = 0; j < 8; j++)
-            {
-                for (int i = 0; i < 8; i++)
-                {
-                    if ((Square[i, j] & occupied) == 0)
-                    {
+            for (int j = 0; j < 8; j++) {
+                for (int i = 0; i < 8; i++) {
+                    if ((Square[i, j] & occupied) == 0) {
                         ulong adjacent = Adjacent[i, j];
-                        if ((other & adjacent) != 0)
-                        {
+                        if ((other & adjacent) != 0) {
                             total++;
                         }
-                        if ((self & adjacent) != 0)
-                        {
+                        if ((self & adjacent) != 0) {
                             total--;
                         }
                     }
@@ -636,24 +627,17 @@ namespace Othello
             return PrintNodes(1, true, this);
         }
 
-        public void PrintScore()
-        {
-            if (!this.IsGameOver)
-            {
+        public void PrintScore() {
+            if (!this.IsGameOver) {
                 return;
             }
 
             Console.Write("Final Score: {0}", this.Score);
-            if (this.Score > 0)
-            {
+            if (this.Score > 0) {
                 Console.WriteLine(" (Black wins)");
-            }
-            else if (this.Score < 0)
-            {
+            } else if (this.Score < 0) {
                 Console.WriteLine(" (White wins)");
-            }
-            else
-            {
+            } else {
                 Console.WriteLine(" (The game is a draw)");
             }
         }
