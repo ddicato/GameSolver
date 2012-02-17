@@ -98,10 +98,17 @@ namespace Othello {
         public static readonly ulong[,] Square;
         public static readonly ulong[,] Adjacent;
 
-        private const ulong Corners = (1ul << 63) | (1ul << 56) | (1ul << 7) | 1ul;
+        public const ulong Corners = (1ul << 63) | (1ul << 56) | (1ul << 7) | 1ul;
 
-        private static readonly ulong[] Row;
-        private static readonly ulong[] Column;
+        public static readonly ulong[] Row;
+        public static readonly ulong[] Column;
+        public static readonly ulong[] HorizEdge;
+        public static readonly ulong[] VertEdge;
+        public static readonly ulong[] DownLeft;
+        public static readonly ulong[] DownRight;
+        public static readonly ulong[] Corner33;
+        public static readonly ulong[] Corner52Cw;
+        public static readonly ulong[] Corner52Ccw;
 
         static OthelloNode() {
             Square = new ulong[8, 8];
@@ -144,9 +151,9 @@ namespace Othello {
                 }
             }
 
-            Row = new ulong[8];
-            Column = new ulong[8];
-            for (int i = 0; i < 8; i++) {
+            Row = new ulong[6];
+            Column = new ulong[6];
+            for (int i = 1; i < 7; i++) {
                 ulong row = 0ul;
                 ulong column = 0ul;
                 for (int j = 0; j < 8; j++) {
@@ -154,9 +161,79 @@ namespace Othello {
                     column |= Square[i, j];
                 }
 
-                Row[i] = row;
-                Column[i] = column;
+                Row[i - 1] = row;
+                Column[i - 1] = column;
             }
+
+            HorizEdge = new ulong[2];
+            VertEdge = new ulong[2];
+            for (int i = 0; i < 8; i++) {
+                HorizEdge[0] |= Square[i, 0];
+                HorizEdge[1] |= Square[i, 7];
+                VertEdge[0] |= Square[0, i];
+                VertEdge[1] |= Square[7, i];
+            }
+            HorizEdge[0] |= Square[1, 1] | Square[6, 1];
+            HorizEdge[1] |= Square[1, 6] | Square[6, 6];
+            VertEdge[0] |= Square[1, 1] | Square[1, 6];
+            VertEdge[1] |= Square[6, 1] | Square[6, 6];
+
+            DownLeft = new ulong[9];
+            DownRight = new ulong[9];
+            for (int i = 3; i < 7; i++) {
+                DownLeft[i - 3] = GenerateDownLeftAt(i, 0);
+                DownRight[i - 3] = GenerateDownRightAt(7 - i, 0);
+                DownLeft[i + 2] = GenerateDownLeftAt(7, i - 2);
+                DownRight[i + 2] = GenerateDownRightAt(0, i - 2);
+            }
+            DownLeft[4] = GenerateDownLeftAt(7, 0);
+            DownRight[4] = GenerateDownRightAt(0, 0);
+
+            Corner33 = new ulong[4];
+            for (int i = 0; i < 3; i++) {
+                for (int j = 0; j < 3; j++) {
+                    Corner33[0] |= Square[i, j];
+                    Corner33[1] |= Square[7 - i, j];
+                    Corner33[2] |= Square[i, 7 - j];
+                    Corner33[3] |= Square[7 - i, 7 - j];
+                }
+            }
+
+            Corner52Cw = new ulong[4];
+            Corner52Ccw = new ulong[4];
+            for (int i = 0; i < 5; i++) {
+                for (int j = 0; j < 2; j++) {
+                    Corner52Cw[0] |= Square[i, j];
+                    Corner52Ccw[0] |= Square[j, i];
+
+                    Corner52Ccw[1] |= Square[i, j + 6];
+                    Corner52Cw[1] |= Square[j + 6, i];
+
+                    Corner52Cw[2] |= Square[i + 3, j + 6];
+                    Corner52Ccw[2] |= Square[j + 6, i + 3];
+
+                    Corner52Ccw[3] |= Square[i + 3, j];
+                    Corner52Cw[3] |= Square[j, i + 3];
+                }
+            }
+        }
+
+        private static ulong GenerateDownLeftAt(int iStart, int jStart) {
+            ulong result = 0ul;
+            for (int i = iStart, j = jStart; i >= 0 && j < 8; i--, j++) {
+                result |= Square[i, j];
+            }
+
+            return result;
+        }
+
+        private static ulong GenerateDownRightAt(int iStart, int jStart) {
+            ulong result = 0ul;
+            for (int i = iStart, j = jStart; i < 8 && j < 8; i++, j++) {
+                result |= Square[i, j];
+            }
+
+            return result;
         }
 
         #endregion
@@ -642,7 +719,31 @@ namespace Othello {
 
         #endregion
 
+        #region Pattern-based Evaluation
+
+
+
+        #endregion
+
         #region Pretty-printing
+
+        public static string PrintUlong(ulong value) {
+            const char empty = '.';
+            const char occupied = '+';
+
+            StringBuilder sb = new StringBuilder();
+            for (int j = 0; j < 8; j++) {
+                for (int i = 0; i < 8; i++) {
+                    if (i > 0) {
+                        sb.Append(' ');
+                    }
+                    sb.Append((value & Square[i, j]) == 0 ? empty : occupied);
+                }
+                sb.AppendLine();
+            }
+
+            return sb.ToString();
+        }
 
         private static void PrintHorizontalSeparator(StringBuilder sb, int groupSize, int offset, bool extra = false) {
             if (offset > 0) {

@@ -7,6 +7,13 @@ using Solver;
 
 namespace Othello {
     class OthelloProgram {
+        static void _Main(string[] args) {
+            RunTests();
+
+            Console.WriteLine("Press Enter to exit.");
+            Console.ReadLine();
+        }
+
         static void Main(string[] args) {
             const bool verbose = false;
             const int games = 1000;
@@ -107,6 +114,7 @@ namespace Othello {
 
         private static void RunTests() {
             TestBitCount();
+            PrintPatterns();
             PrintInitialBoard();
             PrintInitialChildren();
             PerftTest();
@@ -251,6 +259,25 @@ namespace Othello {
 
             Console.WriteLine("...done");
             Console.WriteLine();
+        }
+
+        private static void PrintPatterns() {
+            PrintPattern("Row", OthelloNode.Row);
+            PrintPattern("Column", OthelloNode.Column);
+            PrintPattern("HorizEdge", OthelloNode.HorizEdge);
+            PrintPattern("VertEdge", OthelloNode.VertEdge);
+            PrintPattern("DownLeft", OthelloNode.DownLeft);
+            PrintPattern("DownRight", OthelloNode.DownRight);
+            PrintPattern("Corner33", OthelloNode.Corner33);
+            PrintPattern("Corner52Cw", OthelloNode.Corner52Cw);
+            PrintPattern("Corner52Ccw", OthelloNode.Corner52Ccw);
+        }
+
+        private static void PrintPattern(string name, ulong[] patternSet) {
+            Console.WriteLine("{0} Patterns:", name);
+            foreach (ulong pattern in patternSet) {
+                Console.WriteLine(OthelloNode.PrintUlong(pattern));
+            }
         }
 
         #endregion
