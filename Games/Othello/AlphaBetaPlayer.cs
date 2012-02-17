@@ -212,15 +212,13 @@ namespace Othello {
                         nodesEvaluated / elapsed.TotalMilliseconds);
                 }
             } else if (this.Randomness) {
-                // Inject some randomness if we're not solving the endgame
+                // Inject some randomness if we're not solving the endgame. Nodes are ordered by score and
+                // have an exponentially decreasing probability of getting picked the worse they are.
                 OrderMovesDescending(metadata);
-
-                // 50% probability for first item, 50% for remaining. This is applied recursively so we
-                // get, e.g. for 5 items: 50.0%, 25.0%, 12.5%, 6.25%, 6.25%
                 for (int i = 0; i < metadata.Count; i++) {
                     best = metadata[i].Item1;
                     bestScore = metadata[i].Item2;
-                    if (this.random.Next(2) == 0) {
+                    if (this.random.Next(8) > 0) {
                         break;
                     }
                 }

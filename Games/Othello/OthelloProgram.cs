@@ -9,58 +9,58 @@ namespace Othello {
     class OthelloProgram {
         static void Main(string[] args) {
             const bool verbose = false;
-            const int games = 100;
+            const int games = 1000;
 
             List<OthelloNode> temp = new List<OthelloNode>();
-            Player<OthelloNode> black = new AlphaBetaPlayer(4, Eval0, verbose: false, randomness: true);
-            Player<OthelloNode> white = new AlphaBetaPlayer(4, Eval1, verbose: false, randomness: true);
+            Player<OthelloNode> p0 = new AlphaBetaPlayer(2, OthelloNode.Eval0, verbose: false, randomness: true);
+            Player<OthelloNode> p1 = new AlphaBetaPlayer(2, OthelloNode.Eval1, verbose: false, randomness: true);
 
-            PlayGames(black, white, games, verbose);
+            PlayGames(p0, p1, games, verbose);
 
             Console.WriteLine("Press Enter to exit.");
             Console.ReadLine();
         }
 
-        private static int Eval0(OthelloNode node) {
-            return node.PotentialMobilitySpread() * 2 - node.FrontierSpread() + 8 * node.CornerSpread();
-        }
-
-        private static int Eval1(OthelloNode node) {
-            return node.PotentialMobilitySpread() * 2 - node.FrontierSpread() + 6 * node.CornerSpread();
-        }
-
-        private static void PlayGames(Player<OthelloNode> black, Player<OthelloNode> white, int games = 1, bool verbose = false) {
+        private static void PlayGames(Player<OthelloNode> p0, Player<OthelloNode> p1, int games = 2, bool verbose = false) {
             int totalScore = 0;
-            int blackWins = 0;
-            int whiteWins = 0;
+            int p0Wins = 0;
+            int p1Wins = 0;
             for (int i = 0; i < games; i++) {
                 if (i > 0) {
                     Console.WriteLine();
                 }
                 Console.WriteLine("Game {0} of {1}", i + 1, games);
 
-                int result = GameLoop(black, white, verbose);
+                int result;
+                if ((i & 1) == 0) {
+                    result = GameLoop(p0, "Player 1", p1, "Player 2", verbose);
+                } else {
+                    result = -GameLoop(p1, "Player 2", p0, "Player 1", verbose);
+                }
 
                 totalScore += result;
                 if (result > 0) {
-                    blackWins++;
+                    p0Wins++;
                 } else if (result < 0) {
-                    whiteWins++;
+                    p1Wins++;
                 }
 
-                Console.WriteLine("Average score: {0}", (double)totalScore / (i + 1));
+                Console.WriteLine("Player 1 wins: {0:00.00}% Player 2 wins: {1:00.00}% Average score: {2:+0.000;-0.000}.",
+                    100.0 * p0Wins / (i + 1),
+                    100.0 * p1Wins / (i + 1),
+                    (double)totalScore / (i + 1));
             }
 
             Console.WriteLine(
-                "Out of {0} games: {1} Black win(s), {2} White win(s), and {3} draw(s).",
+                "Out of {0} games: {1} Player 1 win(s), {2} Player 2 win(s), and {3} draw(s).",
                 games,
-                blackWins,
-                whiteWins,
-                games - blackWins - whiteWins);
+                p0Wins,
+                p1Wins,
+                games - p0Wins - p1Wins);
             Console.WriteLine();
         }
 
-        private static int GameLoop(Player<OthelloNode> black, Player<OthelloNode> white, bool verbose = false) {
+        private static int GameLoop(Player<OthelloNode> black, string blackName, Player<OthelloNode> white, string whiteName, bool verbose = false) {
             OthelloNode board = new OthelloNode();
             List<OthelloNode> children;
             while (!board.IsGameOver) {
@@ -83,8 +83,8 @@ namespace Othello {
                     index = white.SelectNode(children);
                 }
 
-                string player = board.Turn == OthelloNode.BLACK ? "Black" : "Wihte";
-                string otherPlayer = board.Turn == OthelloNode.BLACK ? "Wihte" : "Black";
+                string player = board.Turn == OthelloNode.BLACK ? blackName : whiteName;
+                string otherPlayer = board.Turn == OthelloNode.BLACK ? whiteName : blackName;
                 if (index < 0 || index >= children.Count) {
                     Console.WriteLine("{0} made an illegal move.", player);
                     Console.WriteLine("{0} wins!", otherPlayer);
@@ -98,7 +98,7 @@ namespace Othello {
                 Console.WriteLine("Final Board:");
                 Console.WriteLine(board);
             }
-            board.PrintScore();
+            board.PrintScore(blackName, whiteName);
 
             return board.Score;
         }

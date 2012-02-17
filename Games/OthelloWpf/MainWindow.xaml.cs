@@ -53,14 +53,19 @@ namespace OthelloWpf {
                 }
             }
 
-            Func<OthelloNode, int> eval = board =>
-                board.PotentialMobilitySpread() * 2 - board.FrontierSpread() + 6 * board.CornerSpread();
-
-            this.blackPlayer = new AlphaBetaPlayer(6, eval, verbose: true);
-            this.whitePlayer = new AlphaBetaPlayer(6, eval, verbose: true);
+            this.blackPlayer = new AlphaBetaPlayer(5, OthelloNode.Eval0, verbose: true, randomness: true);
+            this.whitePlayer = new AlphaBetaPlayer(5, OthelloNode.Eval1, verbose: true, randomness: true);
 
             //this.blackPlayer = new RandomPlayer();
             //this.whitePlayer= new RandomPlayer();
+        }
+
+        private static int Eval0(OthelloNode node) {
+            return 2 * node.PotentialMobilitySpread() - node.FrontierSpread() + 8 * node.CornerSpread();
+        }
+
+        private static int Eval1(OthelloNode node) {
+            return 2 * node.PotentialMobilitySpread() - node.FrontierSpread() + 8 * node.CornerSpread();
         }
 
         private void InitGame() {

@@ -395,6 +395,20 @@ namespace Othello {
 
         #region Heuristics
 
+        public static int Eval0(OthelloNode node) {
+            return 2 * node.PotentialMobilitySpread()
+                - node.FrontierSpread()
+                + 6 * node.CornerSpread()
+                + 4 * node.StablePieceSpread();
+        }
+
+        public static int Eval1(OthelloNode node) {
+            return 2 * node.PotentialMobilitySpread()
+                - node.FrontierSpread()
+                + 6 * node.CornerSpread()
+                + 4 * node.StablePieceSpread();
+        }
+
         public int PieceCountSpread() {
             return BitCount(this.board[this.turn]) - BitCount(this.board[(this.turn + 1) & 1]);
         }
@@ -451,10 +465,117 @@ namespace Othello {
             return total;
         }
 
+        public static int GetStablePieces(ulong self) {
+            int i, j;
+            ulong stable = self & Corners;
+
+            // Search left-to-right, top-to-bottom
+            for (i = 0; i < 8; i++) {
+                ulong square = Square[i, 0];
+                if ((square & self) == 0) {
+                    break;
+                }
+                stable |= square;
+            }
+            if (i > 0) {
+                for (j = 1; j < 8; j++) {
+                    for (i = 0; i < 7; i++) {
+                        ulong square;
+                        if ((Square[i + 1, j - 1] & self) == 0 ||
+                            ((square = Square[i, j]) & self) == 0) {
+                            break;
+                        }
+                        stable |= square;
+                    }
+                    if (i == 0) {
+                        break;
+                    }
+                }
+            }
+
+            // Search right-to-left, top-to-bottom
+            for (i = 7; i >= 0; i--) {
+                ulong square = Square[i, 0];
+                if ((square & self) == 0) {
+                    break;
+                }
+                stable &= square;
+            }
+            if (i < 7) {
+                for (j = 1; j < 8; j++) {
+                    for (i = 7; i > 0; i--) {
+                        ulong square;
+                        if ((Square[i - 1, j - 1] & self) == 0 ||
+                            ((square = Square[i, j]) & self) == 0) {
+                            break;
+                        }
+                        stable |= square;
+                    }
+                    if (i == 7) {
+                        break;
+                    }
+                }
+            }
+
+            // Search left-to-right, bottom-to-top
+            for (i = 0; i < 8; i++) {
+                ulong square = Square[i, 7];
+                if ((square & self) == 0) {
+                    break;
+                }
+                stable |= square;
+            }
+            if (i > 0) {
+                for (j = 6; j >= 0; j--) {
+                    for (i = 0; i < 7; i++) {
+                        ulong square;
+                        if ((Square[i + 1, j + 1] & self) == 0 ||
+                            ((square = Square[i, j]) & self) == 0) {
+                            break;
+                        }
+                        stable |= square;
+                    }
+                    if (i == 0) {
+                        break;
+                    }
+                }
+            }
+
+            // Search right-to-left, bottom-to-top
+            for (i = 7; i >= 0; i--) {
+                ulong square = Square[i, 0];
+                if ((square & self) == 0) {
+                    break;
+                }
+                stable &= square;
+            }
+            if (i < 7) {
+                for (j = 1; j < 8; j++) {
+                    for (i = 7; i > 0; i--) {
+                        ulong square;
+                        if ((Square[i - 1, j - 1] & self) == 0 ||
+                            ((square = Square[i, j]) & self) == 0) {
+                            break;
+                        }
+                        stable |= square;
+                    }
+                    if (i == 7) {
+                        break;
+                    }
+                }
+            }
+
+            return BitCount(stable);
+        }
+
+        public int StablePieceSpread() {
+            return GetStablePieces(this.PlayerBoard) - GetStablePieces(this.OtherBoard);
+        }
+
         // Potential mobility is the number of empty squares next to an opponent's piece. It provides an
         // approximation for mobility, but at a smaller performance cost.
         public int PotentialMobility() {
-            ulong other = this.board[(this.turn + 1) & 1];
+            ulong other = this.board[(this.turn + 1) & 1]; // TODO: replace with property accessors everywhere
             ulong occupied = other | this.board[this.turn];
 
             int total = 0;
@@ -623,16 +744,16 @@ namespace Othello {
             return PrintNodes(1, true, this);
         }
 
-        public void PrintScore() {
+        public void PrintScore(string blackName = "Black", string whiteName = "White") {
             if (!this.IsGameOver) {
                 return;
             }
 
             Console.Write("Final Score: {0}", this.Score);
             if (this.Score > 0) {
-                Console.WriteLine(" (Black wins)");
+                Console.WriteLine(" ({0} wins)", blackName);
             } else if (this.Score < 0) {
-                Console.WriteLine(" (White wins)");
+                Console.WriteLine(" ({0} wins)", whiteName);
             } else {
                 Console.WriteLine(" (The game is a draw)");
             }
