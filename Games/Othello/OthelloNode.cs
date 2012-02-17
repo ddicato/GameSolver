@@ -100,16 +100,6 @@ namespace Othello {
 
         public const ulong Corners = (1ul << 63) | (1ul << 56) | (1ul << 7) | 1ul;
 
-        public static readonly ulong[] Row;
-        public static readonly ulong[] Column;
-        public static readonly ulong[] HorizEdge;
-        public static readonly ulong[] VertEdge;
-        public static readonly ulong[] DownLeft;
-        public static readonly ulong[] DownRight;
-        public static readonly ulong[] Corner33;
-        public static readonly ulong[] Corner52Cw;
-        public static readonly ulong[] Corner52Ccw;
-
         static OthelloNode() {
             Square = new ulong[8, 8];
             for (int i = 0; i < 8; i++) {
@@ -215,6 +205,22 @@ namespace Othello {
                     Corner52Ccw[3] |= Square[i + 3, j];
                     Corner52Cw[3] |= Square[j, i + 3];
                 }
+            }
+
+            PatternSets = new ulong[9][];
+            PatternSets[0] = Row;
+            PatternSets[1] = Column;
+            PatternSets[2] = HorizEdge;
+            PatternSets[3] = VertEdge;
+            PatternSets[4] = DownLeft;
+            PatternSets[5] = DownRight;
+            PatternSets[6] = Corner33;
+            PatternSets[7] = Corner52Cw;
+            PatternSets[8] = Corner52Ccw;
+
+            PatternScores = new Dictionary<int, Dictionary<ulong, Dictionary<ulong, PatternData>>>[PatternSets.Length];
+            for (int i = 0; i < PatternScores.Length; i++) {
+                PatternScores[i] = new Dictionary<int, Dictionary<ulong, Dictionary<ulong, PatternData>>>();
             }
         }
 
@@ -720,8 +726,103 @@ namespace Othello {
         #endregion
 
         #region Pattern-based Evaluation
+        
+        public static readonly ulong[] Row;
+        public static readonly ulong[] Column;
+        public static readonly ulong[] HorizEdge;
+        public static readonly ulong[] VertEdge;
+        public static readonly ulong[] DownLeft;
+        public static readonly ulong[] DownRight;
+        public static readonly ulong[] Corner33;
+        public static readonly ulong[] Corner52Cw;
+        public static readonly ulong[] Corner52Ccw;
 
+        private static readonly ulong[][] PatternSets;
 
+        private struct PatternData {
+            public int Score;
+            public int Count;
+            public double TotalScore;
+
+            public PatternData(int score) {
+                this.Score = score;
+                this.Count = 1;
+                this.TotalScore = (double)score;
+            }
+
+            public PatternData(PatternData data, int newScore) {
+                this.Count = data.Count + 1;
+                this.TotalScore = data.TotalScore + newScore;
+                this.Score = (int)(this.TotalScore / this.Count);
+            }
+        }
+
+        private static readonly Dictionary<int, Dictionary<ulong, Dictionary<ulong, PatternData>>>[] PatternScores;
+        private static readonly List<OthelloNode> GameHistory = new List<OthelloNode>(); // TODO: make thread-safe?
+
+        public int PatternScore() {
+            ulong self = this.PlayerBoard;
+            ulong other = this.OtherBoard;
+            int result = 0;
+
+            for (int i = 0; i < PatternSets.Length; i++) {
+                foreach (ulong mask in PatternSets[i]) {
+                    Dictionary<ulong, Dictionary<ulong, PatternData>> mid;
+                    Dictionary<ulong, PatternData> inner;
+                    PatternData data;
+                    if (PatternScores[i].TryGetValue(BitCount(this.Occupied), out mid) &&
+                        mid.TryGetValue(self & mask, out inner) &&
+                        inner.TryGetValue(other & mask, out data)) {
+                        result += data.Score;
+                    }
+                }
+            }
+
+            return result;
+        }
+
+        public static void AddIntermediateState(OthelloNode node) {
+            GameHistory.Add(node);
+        }
+
+        // finalScore is black's piece count minus white's
+        public static void Train(int finalScore) {
+            // Score will be stored as an int, so we multiply to get more significant digits.
+            finalScore *= 1000;
+
+            foreach (OthelloNode node in GameHistory) {
+                ulong self = node.PlayerBoard;
+                ulong other = node.OtherBoard;
+                ulong occupied = node.Occupied;
+
+                for (int i = 0; i < PatternSets.Length; i++) {
+                    foreach (ulong mask in PatternSets[i]) {
+                        int pieceCount = BitCount(occupied);
+
+                        Dictionary<ulong, Dictionary<ulong, PatternData>> mid;
+                        if (!PatternScores[i].TryGetValue(pieceCount, out mid)) {
+                            mid = new Dictionary<ulong, Dictionary<ulong, PatternData>>();
+                            PatternScores[i][pieceCount] = mid;
+                        }
+
+                        Dictionary<ulong, PatternData> inner;
+                        if (!mid.TryGetValue(self & mask, out inner)) {
+                            inner = new Dictionary<ulong, PatternData>();
+                            mid[self & mask] = inner;
+                        }
+
+                        PatternData data;
+                        if (inner.TryGetValue(other & mask, out data)) {
+                            inner[other & mask] = new PatternData(data, node.Turn == BLACK ? finalScore : -finalScore);
+                        } else {
+                            inner[other & mask] = new PatternData(node.Turn == BLACK ? finalScore : -finalScore);
+                        }
+                    }
+                }
+            }
+
+            GameHistory.Clear();
+        }
 
         #endregion
 

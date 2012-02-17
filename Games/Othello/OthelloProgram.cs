@@ -16,10 +16,10 @@ namespace Othello {
 
         static void Main(string[] args) {
             const bool verbose = false;
-            const int games = 1000;
+            const int games = 100000;
 
             List<OthelloNode> temp = new List<OthelloNode>();
-            Player<OthelloNode> p0 = new AlphaBetaPlayer(2, OthelloNode.Eval0, verbose: false, randomness: true);
+            Player<OthelloNode> p0 = new AlphaBetaPlayer(2, node => node.PatternScore(), verbose: false, randomness: true);
             Player<OthelloNode> p1 = new AlphaBetaPlayer(2, OthelloNode.Eval1, verbose: false, randomness: true);
 
             PlayGames(p0, p1, games, verbose);
@@ -28,10 +28,19 @@ namespace Othello {
             Console.ReadLine();
         }
 
-        private static void PlayGames(Player<OthelloNode> p0, Player<OthelloNode> p1, int games = 2, bool verbose = false) {
+        private static void PlayGames(
+            Player<OthelloNode> p0,
+            Player<OthelloNode> p1,
+            int games = 2,
+            bool verbose = false,
+            bool training = true) {
             int totalScore = 0;
             int p0Wins = 0;
             int p1Wins = 0;
+            double p0WinsEma = 0.0;
+            double p1WinsEma = 0.0;
+            double scoreEma = 0.0;
+            const double emaFactor = 0.95;
             for (int i = 0; i < games; i++) {
                 if (i > 0) {
                     Console.WriteLine();
@@ -40,22 +49,47 @@ namespace Othello {
 
                 int result;
                 if ((i & 1) == 0) {
-                    result = GameLoop(p0, "Player 1", p1, "Player 2", verbose);
+                    result = GameLoop(p0, "Player 1", p1, "Player 2", verbose, training);
+                    if (training) {
+                        OthelloNode.Train(result);
+                    }
                 } else {
-                    result = -GameLoop(p1, "Player 2", p0, "Player 1", verbose);
+                    result = -GameLoop(p1, "Player 2", p0, "Player 1", verbose, training);
+                    if (training) {
+                        OthelloNode.Train(-result);
+                    }
                 }
 
                 totalScore += result;
+                scoreEma = scoreEma * emaFactor + result * (1.0 - emaFactor);
                 if (result > 0) {
                     p0Wins++;
+                    if (i == 0) {
+                        p0WinsEma = 1.0;
+                    } else {
+                        p0WinsEma = p0WinsEma * emaFactor + (1.0 - emaFactor);
+                        p1WinsEma *= emaFactor;
+                    }
                 } else if (result < 0) {
                     p1Wins++;
+                    if (i == 0) {
+                        p1WinsEma = 1.0;
+                    } else {
+                        p1WinsEma = p1WinsEma * emaFactor + (1.0 - emaFactor);
+                        p0WinsEma *= emaFactor;
+                    }
                 }
 
-                Console.WriteLine("Player 1 wins: {0:00.00}% Player 2 wins: {1:00.00}% Average score: {2:+0.000;-0.000}.",
+                Console.WriteLine(
+                    "Player 1 wins: {0:00.00}% Player 2 wins: {1:00.00}% Average score: {2:+0.000;-0.000}",
                     100.0 * p0Wins / (i + 1),
                     100.0 * p1Wins / (i + 1),
                     (double)totalScore / (i + 1));
+                Console.WriteLine(
+                    "Exponential moving averages: {0:00.00}% to {1:00.00}% with score {2:+0.000;-0.000}",
+                    100.0 * p0WinsEma,
+                    100.0 * p1WinsEma,
+                    scoreEma);
             }
 
             Console.WriteLine(
@@ -67,7 +101,13 @@ namespace Othello {
             Console.WriteLine();
         }
 
-        private static int GameLoop(Player<OthelloNode> black, string blackName, Player<OthelloNode> white, string whiteName, bool verbose = false) {
+        private static int GameLoop(
+            Player<OthelloNode> black,
+            string blackName,
+            Player<OthelloNode> white,
+            string whiteName,
+            bool verbose = false,
+            bool training = true) {
             OthelloNode board = new OthelloNode();
             List<OthelloNode> children;
             while (!board.IsGameOver) {
@@ -99,6 +139,9 @@ namespace Othello {
                 }
 
                 board = children[index];
+                if (training) {
+                    OthelloNode.AddIntermediateState(board);
+                }
             }
 
             if (verbose) {
