@@ -207,20 +207,42 @@ namespace Othello {
                 }
             }
 
-            PatternSets = new ulong[9][];
-            PatternSets[0] = Row;
-            PatternSets[1] = Column;
-            PatternSets[2] = HorizEdge;
-            PatternSets[3] = VertEdge;
-            PatternSets[4] = DownLeft;
-            PatternSets[5] = DownRight;
-            PatternSets[6] = Corner33;
-            PatternSets[7] = Corner52Cw;
-            PatternSets[8] = Corner52Ccw;
+            PatternSets = new ulong[][] {
+                Row,
+                Column,
+                HorizEdge,
+                VertEdge,
+                DownLeft,
+                DownRight,
+                Corner33,
+                Corner52Cw,
+                Corner52Ccw
+            };
 
             PatternScores = new Dictionary<int, Dictionary<ulong, Dictionary<ulong, PatternData>>>[PatternSets.Length];
             for (int i = 0; i < PatternScores.Length; i++) {
                 PatternScores[i] = new Dictionary<int, Dictionary<ulong, Dictionary<ulong, PatternData>>>();
+            }
+
+            Features = new Func<OthelloNode, int>[] {
+                node => node.PieceCountSpread(),
+                node => node.CornerSpread(),
+                node => node.StablePieceSpread(),
+                node => node.FrontierSpread(),
+                node => node.PotentialMobilitySpread()
+            };
+            FeatureNames = new string[] {
+                "Piece Count",
+                "Corner Squares",
+                "Stable Pieces",
+                "Frontier Squares",
+                "Potential Mobility"
+            };
+
+            // TODO: add interpolation to training function
+            FeatureScores = new Dictionary<int, Dictionary<int, PatternData>>[Features.Length];
+            for (int i = 0; i < Features.Length; i++) {
+                FeatureScores[i] = new Dictionary<int, Dictionary<int, PatternData>>();
             }
         }
 
@@ -739,7 +761,14 @@ namespace Othello {
 
         private static readonly ulong[][] PatternSets;
 
-        private struct PatternData {
+        private static readonly Dictionary<int, Dictionary<ulong, Dictionary<ulong, PatternData>>>[] PatternScores;
+        private static readonly List<OthelloNode> GameHistory = new List<OthelloNode>(); // TODO: make thread-safe?
+
+        private static readonly Func<OthelloNode, int>[] Features;
+        private static readonly string[] FeatureNames;
+        private static readonly Dictionary<int, Dictionary<int, PatternData>>[] FeatureScores;
+
+        private struct PatternData {// TODO: also holds feature data. rename?
             public int Score;
             public int Count;
             public double TotalScore;
@@ -757,12 +786,10 @@ namespace Othello {
             }
         }
 
-        private static readonly Dictionary<int, Dictionary<ulong, Dictionary<ulong, PatternData>>>[] PatternScores;
-        private static readonly List<OthelloNode> GameHistory = new List<OthelloNode>(); // TODO: make thread-safe?
-
-        public int PatternScore() {
+        public int HeuristicScore() {
             ulong self = this.PlayerBoard;
             ulong other = this.OtherBoard;
+            int pieceCount = BitCount(this.Occupied);
             int result = 0;
 
             for (int i = 0; i < PatternSets.Length; i++) {
@@ -770,7 +797,38 @@ namespace Othello {
                     Dictionary<ulong, Dictionary<ulong, PatternData>> mid;
                     Dictionary<ulong, PatternData> inner;
                     PatternData data;
-                    if (PatternScores[i].TryGetValue(BitCount(this.Occupied), out mid) &&
+                    if (PatternScores[i].TryGetValue(pieceCount, out mid) &&
+                        mid.TryGetValue(self & mask, out inner) &&
+                        inner.TryGetValue(other & mask, out data)) {
+                        result += data.Score;
+                    }
+                }
+            }
+
+            for (int i = 0; i < Features.Length; i++) {
+                Dictionary<int, PatternData> inner;
+                PatternData data;
+                if (FeatureScores[i].TryGetValue(pieceCount, out inner) &&
+                    inner.TryGetValue(Features[i](this), out data)) {
+                    result += data.Score;
+                }
+            }
+
+            return result;
+        }
+
+        public int PatternScore() {
+            ulong self = this.PlayerBoard;
+            ulong other = this.OtherBoard;
+            int pieceCount = BitCount(this.Occupied);
+            int result = 0;
+
+            for (int i = 0; i < PatternSets.Length; i++) {
+                foreach (ulong mask in PatternSets[i]) {
+                    Dictionary<ulong, Dictionary<ulong, PatternData>> mid;
+                    Dictionary<ulong, PatternData> inner;
+                    PatternData data;
+                    if (PatternScores[i].TryGetValue(pieceCount, out mid) &&
                         mid.TryGetValue(self & mask, out inner) &&
                         inner.TryGetValue(other & mask, out data)) {
                         result += data.Score;
@@ -781,24 +839,45 @@ namespace Othello {
             return result;
         }
 
+        public int FeatureScore() {
+            int pieceCount = BitCount(this.Occupied);
+            int result = 0;
+
+            for (int i = 0; i < Features.Length; i++) {
+                Dictionary<int, PatternData> inner;
+                PatternData data;
+                if (FeatureScores[i].TryGetValue(pieceCount, out inner) &&
+                    inner.TryGetValue(Features[i](this), out data)) {
+                    result += data.Score;
+                }
+            }
+
+            return result;
+        }
+
+        #endregion
+
+        #region Learning
+
         public static void AddIntermediateState(OthelloNode node) {
             GameHistory.Add(node);
         }
 
         // finalScore is black's piece count minus white's
         public static void Train(int finalScore) {
+            // TODO: train on all of a board's symmetries
+            // TODO: interpolate between turns when averaging. For features, also interpolate between feature values
             // Score will be stored as an int, so we multiply to get more significant digits.
             finalScore *= 1000;
 
             foreach (OthelloNode node in GameHistory) {
                 ulong self = node.PlayerBoard;
                 ulong other = node.OtherBoard;
-                ulong occupied = node.Occupied;
+                int pieceCount = BitCount(node.Occupied);
+                int relativeScore = node.Turn == BLACK ? finalScore : -finalScore;
 
                 for (int i = 0; i < PatternSets.Length; i++) {
                     foreach (ulong mask in PatternSets[i]) {
-                        int pieceCount = BitCount(occupied);
-
                         Dictionary<ulong, Dictionary<ulong, PatternData>> mid;
                         if (!PatternScores[i].TryGetValue(pieceCount, out mid)) {
                             mid = new Dictionary<ulong, Dictionary<ulong, PatternData>>();
@@ -813,10 +892,27 @@ namespace Othello {
 
                         PatternData data;
                         if (inner.TryGetValue(other & mask, out data)) {
-                            inner[other & mask] = new PatternData(data, node.Turn == BLACK ? finalScore : -finalScore);
+                            inner[other & mask] = new PatternData(data, relativeScore);
                         } else {
-                            inner[other & mask] = new PatternData(node.Turn == BLACK ? finalScore : -finalScore);
+                            inner[other & mask] = new PatternData(relativeScore);
                         }
+                    }
+                }
+
+                for (int i = 0; i < Features.Length; i++) {
+                    int score = Features[i](node);
+
+                    Dictionary<int, PatternData> inner;
+                    if (!FeatureScores[i].TryGetValue(pieceCount, out inner)) {
+                        inner = new Dictionary<int, PatternData>();
+                        FeatureScores[i][pieceCount] = inner;
+                    }
+
+                    PatternData data;
+                    if (inner.TryGetValue(score, out data)) {
+                        inner[score] = new PatternData(data, relativeScore);
+                    } else {
+                        inner[score] = new PatternData(relativeScore);
                     }
                 }
             }

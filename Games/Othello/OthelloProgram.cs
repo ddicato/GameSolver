@@ -14,15 +14,23 @@ namespace Othello {
             Console.ReadLine();
         }
 
+        // TODO: verbosity levels: Board, Turn, Game, GameSet, Output, None
         static void Main(string[] args) {
             const bool verbose = false;
-            const int games = 100000;
+            const int trainingGames = 10000;
+            const int games = 100;
 
             List<OthelloNode> temp = new List<OthelloNode>();
-            Player<OthelloNode> p0 = new AlphaBetaPlayer(2, node => node.PatternScore(), verbose: false, randomness: true);
-            Player<OthelloNode> p1 = new AlphaBetaPlayer(2, OthelloNode.Eval1, verbose: false, randomness: true);
+            Player<OthelloNode> p0 = new AlphaBetaPlayer(1, node => node.PatternScore(), verbose: verbose, randomness: true);
+            Player<OthelloNode> p1 = new AlphaBetaPlayer(1, node => node.FeatureScore(), verbose: verbose, randomness: true);
 
-            PlayGames(p0, p1, games, verbose);
+            PlayGames(p0, p1, trainingGames, verbose, training: true);
+
+            p0 = new AlphaBetaPlayer(1, node => node.HeuristicScore(), verbose: false, randomness: true);
+            p1 = new AlphaBetaPlayer(1, OthelloNode.Eval1, verbose: false, randomness: true);
+            //p1 = new RandomPlayer();
+
+            PlayGames(p0, p1, games, verbose, training: false);
 
             Console.WriteLine("Press Enter to exit.");
             Console.ReadLine();

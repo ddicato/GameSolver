@@ -212,6 +212,7 @@ namespace Othello {
                         nodesEvaluated / elapsed.TotalMilliseconds);
                 }
             } else if (this.Randomness) {
+                // TODO: add a way to explore nodes that don't have a lot of known feature or pattern values
                 // Inject some randomness if we're not solving the endgame. Nodes are ordered by score and
                 // have an exponentially decreasing probability of getting picked the worse they are.
                 OrderMovesDescending(metadata);
