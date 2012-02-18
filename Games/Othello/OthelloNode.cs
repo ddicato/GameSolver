@@ -269,6 +269,105 @@ namespace Othello {
 
         #endregion
 
+        #region Board Transforms
+
+        public static IEnumerable<OthelloNode> GetSymmetries(OthelloNode node) {
+            yield return node;
+            yield return new OthelloNode(node.Turn, RotateRight(node.PlayerBoard), RotateRight(node.OtherBoard), node.Pass);
+            yield return new OthelloNode(node.Turn, Rotate180(node.PlayerBoard), Rotate180(node.OtherBoard), node.Pass);
+            yield return new OthelloNode(node.Turn, RotateLeft(node.PlayerBoard), RotateLeft(node.OtherBoard), node.Pass);
+            yield return new OthelloNode(node.Turn, FlipHoriz(node.PlayerBoard), FlipHoriz(node.OtherBoard), node.Pass);
+            yield return new OthelloNode(node.Turn, FlipVert(node.PlayerBoard), FlipVert(node.OtherBoard), node.Pass);
+            yield return new OthelloNode(node.Turn, FlipDiag0(node.PlayerBoard), FlipDiag0(node.OtherBoard), node.Pass);
+            yield return new OthelloNode(node.Turn, FlipDiag1(node.PlayerBoard), FlipDiag1(node.OtherBoard), node.Pass);
+        }
+
+        public static ulong RotateRight(ulong board) {
+            ulong result = 0ul;
+            for (int i = 0; i < 8; i++) {
+                for (int j = 0; j < 8; j++) {
+                    if ((board & Square[i, j]) != 0) {
+                        result |= Square[7 - j, i];
+                    }
+                }
+            }
+            return result;
+        }
+
+        public static ulong RotateLeft(ulong board) {
+            ulong result = 0ul;
+            for (int i = 0; i < 8; i++) {
+                for (int j = 0; j < 8; j++) {
+                    if ((board & Square[i, j]) != 0) {
+                        result |= Square[j, 7 - i];
+                    }
+                }
+            }
+            return result;
+        }
+
+        public static ulong Rotate180(ulong board) {
+            ulong result = 0ul;
+            for (int i = 0; i < 8; i++) {
+                for (int j = 0; j < 8; j++) {
+                    if ((board & Square[i, j]) != 0) {
+                        result |= Square[7 - i, 7 - j];
+                    }// 1,7 --> 6,0
+                }
+            }
+            return result;
+        }
+
+        public static ulong FlipHoriz(ulong board) {
+            ulong result = 0ul;
+            for (int i = 0; i < 8; i++) {
+                for (int j = 0; j < 8; j++) {
+                    if ((board & Square[i, j]) != 0) {
+                        result |= Square[7 - i, j];
+                    }
+                }
+            }
+            return result;
+        }
+
+        public static ulong FlipVert(ulong board) {
+            ulong result = 0ul;
+            for (int i = 0; i < 8; i++) {
+                for (int j = 0; j < 8; j++) {
+                    if ((board & Square[i, j]) != 0) {
+                        result |= Square[i, 7 - j];
+                    }
+                }
+            }
+            return result;
+        }
+
+        public static ulong FlipDiag0(ulong board) {
+            ulong result = 0ul;
+            for (int i = 0; i < 8; i++) {
+                for (int j = 0; j < 8; j++) {
+                    if ((board & Square[i, j]) != 0) {
+                        result |= Square[j, i];
+                    }
+                }
+            }
+            return result;
+        }
+
+        public static ulong FlipDiag1(ulong board) {
+            ulong result = 0ul;
+            for (int i = 0; i < 8; i++) {
+                for (int j = 0; j < 8; j++) {
+                    if ((board & Square[i, j]) != 0) {
+                        result |= Square[7 - j, 7 - i];
+                    }
+                }
+            }
+            return result;
+        }
+
+        #endregion
+
         #region Hashing and Equality
 
         public override bool Equals(OthelloNode other) {
@@ -903,60 +1002,70 @@ namespace Othello {
         }
 
         // finalScore is black's piece count minus white's
-        public static void Train(int finalScore) {
-            // TODO: train on all of a board's symmetries
+        public static void Train(int finalScore, bool includeSymmetries = true) {
             // TODO: interpolate between turns when averaging. For features, also interpolate between feature values
+            // TODO: more and better learning algorithms: Gradient descent, Temporal-difference
             // Score will be stored as an int, so we multiply to get more significant digits.
             finalScore *= 1000;
 
-            foreach (OthelloNode node in GameHistory) {
-                ulong self = node.PlayerBoard;
-                ulong other = node.OtherBoard;
-                int pieceCount = BitCount(node.Occupied);
-                int relativeScore = node.Turn == BLACK ? finalScore : -finalScore;
-
-                for (int i = 0; i < PatternSets.Length; i++) {
-                    foreach (ulong mask in PatternSets[i]) {
-                        Dictionary<ulong, Dictionary<ulong, HeuristicData>> mid;
-                        if (!PatternScores[i].TryGetValue(pieceCount, out mid)) {
-                            mid = new Dictionary<ulong, Dictionary<ulong, HeuristicData>>();
-                            PatternScores[i][pieceCount] = mid;
-                        }
-
-                        Dictionary<ulong, HeuristicData> inner;
-                        if (!mid.TryGetValue(self & mask, out inner)) {
-                            inner = new Dictionary<ulong, HeuristicData>();
-                            mid[self & mask] = inner;
-                        }
-
-                        HeuristicData data;
-                        if (inner.TryGetValue(other & mask, out data)) {
-                            inner[other & mask] = new HeuristicData(data, relativeScore);
-                        } else {
-                            inner[other & mask] = new HeuristicData(relativeScore);
-                        }
+            if (includeSymmetries) {
+                foreach (OthelloNode node in GameHistory) {
+                    foreach (OthelloNode permutation in GetSymmetries(node)) {
+                        TrainSingle(permutation, finalScore);
                     }
                 }
+            } else foreach (OthelloNode node in GameHistory) {
+                TrainSingle(node, finalScore);
+            }
 
-                for (int i = 0; i < Features.Length; i++) {
-                    int score = Features[i](node);
+            GameHistory.Clear();
+        }
 
-                    Dictionary<int, HeuristicData> inner;
-                    if (!FeatureScores[i].TryGetValue(pieceCount, out inner)) {
-                        inner = new Dictionary<int, HeuristicData>();
-                        FeatureScores[i][pieceCount] = inner;
+        private static void TrainSingle(OthelloNode node, int finalScore) {
+            ulong self = node.PlayerBoard;
+            ulong other = node.OtherBoard;
+            int pieceCount = BitCount(node.Occupied);
+            int relativeScore = node.Turn == BLACK ? finalScore : -finalScore;
+
+            for (int i = 0; i < PatternSets.Length; i++) {
+                foreach (ulong mask in PatternSets[i]) {
+                    Dictionary<ulong, Dictionary<ulong, HeuristicData>> mid;
+                    if (!PatternScores[i].TryGetValue(pieceCount, out mid)) {
+                        mid = new Dictionary<ulong, Dictionary<ulong, HeuristicData>>();
+                        PatternScores[i][pieceCount] = mid;
+                    }
+
+                    Dictionary<ulong, HeuristicData> inner;
+                    if (!mid.TryGetValue(self & mask, out inner)) {
+                        inner = new Dictionary<ulong, HeuristicData>();
+                        mid[self & mask] = inner;
                     }
 
                     HeuristicData data;
-                    if (inner.TryGetValue(score, out data)) {
-                        inner[score] = new HeuristicData(data, relativeScore);
+                    if (inner.TryGetValue(other & mask, out data)) {
+                        inner[other & mask] = new HeuristicData(data, relativeScore);
                     } else {
-                        inner[score] = new HeuristicData(relativeScore);
+                        inner[other & mask] = new HeuristicData(relativeScore);
                     }
                 }
             }
 
-            GameHistory.Clear();
+            for (int i = 0; i < Features.Length; i++) {
+                int score = Features[i](node);
+
+                Dictionary<int, HeuristicData> inner;
+                if (!FeatureScores[i].TryGetValue(pieceCount, out inner)) {
+                    inner = new Dictionary<int, HeuristicData>();
+                    FeatureScores[i][pieceCount] = inner;
+                }
+
+                HeuristicData data;
+                if (inner.TryGetValue(score, out data)) {
+                    inner[score] = new HeuristicData(data, relativeScore);
+                } else {
+                    inner[score] = new HeuristicData(relativeScore);
+                }
+            }
         }
 
         #endregion

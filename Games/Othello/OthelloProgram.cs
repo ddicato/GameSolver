@@ -19,7 +19,7 @@ namespace Othello {
         static void Main(string[] args) {
             const bool verbose = false;
             const int randomTrainingGames = 500;
-            const int selfTrainingGames = 500;
+            const int selfTrainingGames = 1000;
             const int games = 500;
 
             Player<OthelloNode> p0 = new AlphaBetaPlayer(1, node => node.PatternScore(), verbose: verbose, randomness: false, exploring: false);
@@ -27,8 +27,8 @@ namespace Othello {
 
             PlayGames(p0, p1, randomTrainingGames, verbose, training: true, outputLog: "0_RandomPhase.txt");
 
-            p0 = new AlphaBetaPlayer(1, node => node.PatternScore(), verbose: verbose, randomness: true, exploring: false);
-            p1 = new AlphaBetaPlayer(2, node => node.PatternScore(), verbose: verbose, randomness: true, exploring: false);
+            p0 = new AlphaBetaPlayer(1, node => node.PatternScore(), verbose: verbose, randomness: true, exploring: true);
+            p1 = new AlphaBetaPlayer(1, node => node.PatternScore(), verbose: verbose, randomness: true, exploring: true);
 
             PlayGames(p0, p1, selfTrainingGames, verbose, training: true, outputLog: "1_SelfPhase.txt");
 
@@ -53,7 +53,7 @@ namespace Othello {
             bool verbose = false,
             bool training = true,
             string outputLog = null) {
-            const double emaFactor = 0.99;
+            const double emaFactor = 0.97;
 
             int totalScore = 0;
             int p0Wins = 0;
@@ -61,7 +61,15 @@ namespace Othello {
             double p0WinsEma = 0.0;
             double p1WinsEma = 0.0;
             double scoreEma = 0.0;
+
             StreamWriter writer = null;
+            if (outputLog != null) {
+                try {
+                    writer = new StreamWriter(outputLog, false);
+                    writer.WriteLine("P0WinsAvg P0WinsEma P1WinsAvg P1WinsEma ScoreAvg ScoreEma");
+                } catch { }
+            }
+
             for (int i = 0; i < games; i++) {
                 if (i > 0) {
                     Console.WriteLine();
@@ -72,12 +80,12 @@ namespace Othello {
                 if ((i & 1) == 0) {
                     result = GameLoop(p0, "Player 1", p1, "Player 2", verbose, training);
                     if (training) {
-                        OthelloNode.Train(result);
+                        OthelloNode.Train(result, includeSymmetries: true);
                     }
                 } else {
                     result = -GameLoop(p1, "Player 2", p0, "Player 1", verbose, training);
                     if (training) {
-                        OthelloNode.Train(-result);
+                        OthelloNode.Train(-result, includeSymmetries: true);
                     }
                 }
 
@@ -117,12 +125,6 @@ namespace Othello {
                     100.0 * p1WinsEma,
                     scoreEma);
 
-                if (i == 0 && outputLog != null) {
-                    try {
-                        writer = new StreamWriter(outputLog, false);
-                        writer.WriteLine("P0WinsAvg P0WinsEma P1WinsAvg P1WinsEma ScoreAvg ScoreEma");
-                    } catch { }
-                }
                 if (writer != null) {
                     writer.WriteLine(
                         "{0:0.0000} {1:0.0000} {2:0.0000} {3:0.0000} {4:+00.00;-00.00} {5:+00.00;-00.00}",
@@ -204,6 +206,7 @@ namespace Othello {
 
         private static void RunTests() {
             TestBitCount();
+            PrintSymmetries();
             PrintPatterns();
             PrintInitialBoard();
             PrintInitialChildren();
@@ -351,7 +354,7 @@ namespace Othello {
             Console.WriteLine();
         }
 
-        private static void PrintPatterns() {
+        private static void PrintPatterns() { // TODO: create PatternNames?
             PrintPattern("Row", OthelloNode.Row);
             PrintPattern("Column", OthelloNode.Column);
             PrintPattern("HorizEdge", OthelloNode.HorizEdge);
@@ -367,6 +370,20 @@ namespace Othello {
             Console.WriteLine("{0} Patterns:", name);
             foreach (ulong pattern in patternSet) {
                 Console.WriteLine(OthelloNode.PrintUlong(pattern));
+            }
+        }
+
+        private static void PrintSymmetries() {
+            Random random = new Random(12345);
+            OthelloNode node = new OthelloNode();
+            for (int i = 0; i < 10; i++) {
+                List<OthelloNode> children = node.GetChildren();
+                node = children[random.Next(children.Count)];
+            }
+
+            Console.WriteLine("Displaying board symmetries:");
+            foreach (OthelloNode permutation in OthelloNode.GetSymmetries(node)) {
+                Console.WriteLine(permutation);
             }
         }
 

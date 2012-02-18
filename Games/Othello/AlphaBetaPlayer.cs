@@ -230,7 +230,7 @@ namespace Othello {
 
                     int probabilityReciprocal = 8;
                     if (this.Exploring) {
-                        // Increase likelihood of skipping this node if most of the features are known.
+                        // Decrease likelihood of skipping this node if more of the features are unknown.
                         double known = OthelloNode.Features.Length - nodes[best].UnknownFeatures();
                         known *= known;
                         known /= OthelloNode.Features.Length * OthelloNode.Features.Length;
