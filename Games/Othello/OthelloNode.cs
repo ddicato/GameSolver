@@ -1072,67 +1072,260 @@ namespace Othello {
 
         #region Serialization
 
-        public static void WriteHeuristics(StreamWriter writer) {
+        private static void WriteComment(StreamWriter writer, string format, params object[] args) {
+            WriteComment(writer, 0, format, args);
+        }
+
+        private static void WriteComment(StreamWriter writer, int indentLevel, string format, params object[] args) {
             const string indent = "    ";
             const string comment = "#   ";
 
-            for (int i = 0; i < Features.Length; i++) {
-                writer.WriteLine("{0}Feature {1}: {2}", comment, i, FeatureNames[i]);
-                writer.WriteLine("Feature");
-
-                List<int> pieceCounts = FeatureScores[i].Keys.ToList();
-                pieceCounts.Sort();
-
-                writer.WriteLine("{0}Data for {1} piece counts", comment, pieceCounts.Count);
-                foreach (int pieceCount in pieceCounts) {
-                    writer.WriteLine("PieceCount {0}", pieceCount);
-
-                    List<int> keys = FeatureScores[i][pieceCount].Keys.ToList();
-                    keys.Sort();
-
-                    writer.WriteLine("{0}{1} Entries", comment + indent, keys.Count);
-                    foreach (int key in keys) {
-                        HeuristicData data = FeatureScores[i][pieceCount][key];
-                        writer.Write(" {0},{1},{2},{3}", key, data.Score, data.Count, data.TotalScore);
-                    }
-                    writer.WriteLine();
-                }
+            writer.Write(comment);
+            for (int i = 0; i < indentLevel; i++) {
+                writer.Write(indent);
             }
+            writer.WriteLine(format, args);
+        }
 
-            for (int i = 0; i < PatternSets.Length; i++) {
-                writer.WriteLine("{0}PatternSet {1}", comment, i);
-                writer.WriteLine("PatternSet");
+        public static void WriteHeuristics(string path) {// TODO: take file name instead of writer
+            const string indent = "    ";
+            const string comment = "#   ";
 
-                ulong[] masks = PatternSets[i];
-                for (int j = 0; j < masks.Length; j++) {
-                    ulong mask = masks[j];
-                    writer.WriteLine("{0}Pattern {1}", comment + indent, j);
-                    writer.WriteLine("Pattern");
-                    writer.Write(PrintUlong(mask, comment + indent)); // PrintUlong includes its own newline
-                }
+            Console.Write("Saving evaluation parameters...");
+            StreamWriter writer = new StreamWriter(path, false);
 
-                List<int> pieceCounts = PatternScores[i].Keys.ToList();
-                pieceCounts.Sort();
+            try {
+                for (int i = 0; i < Features.Length; i++) {
+                    WriteComment(writer, "Feature {0}: {1}", i, FeatureNames[i]);
+                    writer.WriteLine("Feature");
 
-                writer.WriteLine("{0}Data for {1} piece counts", comment, pieceCounts.Count);
-                foreach (int pieceCount in pieceCounts) {
-                    writer.WriteLine("PieceCount {0}", pieceCount);
+                    List<int> pieceCounts = FeatureScores[i].Keys.ToList();
+                    pieceCounts.Sort();
 
-                    Dictionary<ulong, Dictionary<ulong, HeuristicData>> selfBoards = PatternScores[i][pieceCount];
-                    writer.WriteLine("{0}{1} Entries", comment + indent, selfBoards.Count);
-                    foreach (ulong self in selfBoards.Keys) {
-                        Dictionary<ulong, HeuristicData> otherBoards = selfBoards[self];
-                        writer.WriteLine("{0}{1} Sub-Entries", comment + indent + indent, otherBoards.Count);
+                    WriteComment(writer, "Data for {0} piece counts", pieceCounts.Count);
+                    foreach (int pieceCount in pieceCounts) {
+                        writer.WriteLine("PieceCount {0}", pieceCount);
 
-                        writer.Write("{0}:", self);
-                        foreach (ulong other in otherBoards.Keys) {
-                            HeuristicData data = otherBoards[other];
-                            writer.Write(" {0},{1},{2},{3}", other, data.Score, data.Count, data.TotalScore);
+                        List<int> keys = FeatureScores[i][pieceCount].Keys.ToList();
+                        keys.Sort();
+
+                        WriteComment(writer, 1, "{0} Entries", keys.Count);
+                        foreach (int key in keys) {
+                            HeuristicData data = FeatureScores[i][pieceCount][key];
+                            writer.Write("{0},{1},{2},{3} ", key, data.Score, data.Count, data.TotalScore);
                         }
                         writer.WriteLine();
                     }
                 }
+
+                for (int i = 0; i < PatternSets.Length; i++) {
+                    WriteComment(writer, "PatternSet {0}", i);
+                    writer.WriteLine("PatternSet");
+
+                    ulong[] masks = PatternSets[i];
+                    for (int j = 0; j < masks.Length; j++) {
+                        ulong mask = masks[j];
+                        WriteComment(writer, 1, "Pattern {0}", j);
+                        writer.Write(PrintUlong(mask, comment + indent)); // PrintUlong includes its own newline
+                    }
+
+                    List<int> pieceCounts = PatternScores[i].Keys.ToList();
+                    pieceCounts.Sort();
+
+                    WriteComment(writer, "Data for {0} piece counts", pieceCounts.Count);
+                    foreach (int pieceCount in pieceCounts) {
+                        writer.WriteLine("PieceCount {0}", pieceCount);
+
+                        Dictionary<ulong, Dictionary<ulong, HeuristicData>> selfBoards = PatternScores[i][pieceCount];
+                        WriteComment(writer, 1, "{0} Entries", selfBoards.Count);
+                        foreach (ulong self in selfBoards.Keys) {
+                            Dictionary<ulong, HeuristicData> otherBoards = selfBoards[self];
+                            WriteComment(writer, 2, "{0} Sub-Entries", otherBoards.Count);
+
+                            writer.WriteLine(self);
+                            foreach (ulong other in otherBoards.Keys) {
+                                HeuristicData data = otherBoards[other];
+                                writer.Write("{0},{1},{2},{3} ", other, data.Score, data.Count, data.TotalScore);
+                            }
+                            writer.WriteLine();
+                        }
+                    }
+                }
+            } catch {
+                Console.WriteLine("error.");
+            } finally {
+                writer.Close();
             }
+
+            Console.WriteLine("done.");
+        }
+
+        #endregion
+
+        #region Deserialization
+
+        public static void ClearHeuristics() {
+            foreach (Dictionary<int, Dictionary<int, HeuristicData>> dict in FeatureScores) {
+                dict.Clear();
+            }
+            foreach (Dictionary<int, Dictionary<ulong, Dictionary<ulong, HeuristicData>>> dict in PatternScores) {
+                dict.Clear();
+            }
+
+            GC.Collect();
+        }
+
+        private static void CheckEOF(string line) {
+            if (line == null) {
+                throw new InvalidDataException("Unexpected EOF");
+            }
+        }
+
+        // Read and trim the next line, skipping comments and blank lines
+        private static string NextLine(StreamReader reader, string remainder = null) {
+            const string comment = "#"; // TODO: cleanup consts
+
+            string line = remainder == null ? reader.ReadLine() : remainder;
+            if (line != null) {
+                line = line.Trim();
+            }
+
+            while (line != null &&
+                (string.IsNullOrWhiteSpace(line) ||
+                line.StartsWith(comment))) {
+                line = reader.ReadLine().Trim();
+            }
+
+            return line;
+        }
+
+        private static void EatLine(StreamReader reader, string match, string remainder = null) {
+            string line = NextLine(reader, remainder);
+            if (line != match) {
+                throw new InvalidDataException(string.Format(
+                    "Expected {0}, got {1}",
+                    match == null ? "<EOF>" : '"' + match + '"',
+                    line == null ? "<EOF>" : '"' + line + '"'));
+            }
+        }
+
+        private static bool TryEatPrefix(StreamReader reader, string match, out string line, string remainder = null) {
+            line = NextLine(reader, remainder);
+            if (!line.StartsWith(match)) {
+                return false;
+            }
+
+            line = line.Substring(match.Length).Trim();
+            return true;
+        }
+
+        private static HeuristicData ParseHeuristicData<T>(string input, Func<string, T> parse, out T key) {
+            CheckEOF(input);
+            input = input.Trim();
+            string[] data = input.Split(new char[] { ',' }, 4);
+            if (data == null || data.Length < 4) {
+                throw new FormatException(string.Format(
+                    "Cannot parse \"{0}\" as {1}",
+                    input,
+                    typeof(HeuristicData).Name));
+            }
+
+            key = parse(data[0]);
+            return new HeuristicData() {
+                Score = int.Parse(data[1]),
+                Count = int.Parse(data[2]),
+                TotalScore = double.Parse(data[3])
+            };
+        }
+
+        public static void ReadHeuristics(string path) {
+            try {
+                if (!File.Exists(path)) {
+                    return;
+                }
+            } catch {
+                return;
+            }
+
+            Console.Write("Loading evaluation parameters...");
+
+            ClearHeuristics();
+            StreamReader reader = new StreamReader(path);
+
+            try {
+                string line = null;
+                for (int i = 0; i < Features.Length; i++) {
+                    EatLine(reader, "Feature", line);
+
+                    while (TryEatPrefix(reader, "PieceCount", out line)) {
+                        int pieceCount = int.Parse(line);
+                        Dictionary<int, HeuristicData> inner;
+                        if (!FeatureScores[i].TryGetValue(pieceCount, out inner)) {
+                            inner = new Dictionary<int, HeuristicData>();
+                            FeatureScores[i][pieceCount] = inner;
+                        }
+
+                        line = NextLine(reader);
+                        CheckEOF(line);
+                        foreach (string entry in line.Split(new char[0], StringSplitOptions.RemoveEmptyEntries)) {
+                            int key;
+                            HeuristicData data = ParseHeuristicData(entry, int.Parse, out key);
+                            inner[key] = data;
+                        }
+                    }
+                }
+
+                for (int i = 0; i < PatternSets.Length; i++) {
+                    EatLine(reader, "PatternSet", line);
+
+                    line = null;
+                    int pieceCount;
+                    while (TryEatPrefix(reader, "PieceCount", out line, line) &&
+                        int.TryParse(line, out pieceCount)) {
+                        Dictionary<ulong, Dictionary<ulong, HeuristicData>> mid;
+                        if (!PatternScores[i].TryGetValue(pieceCount, out mid)) {
+                            mid = new Dictionary<ulong, Dictionary<ulong, HeuristicData>>();
+                            PatternScores[i][pieceCount] = mid;
+                        }
+
+                        ulong self;
+                        line = NextLine(reader);
+                        CheckEOF(line);
+                        while (line != null && ulong.TryParse(line, out self)) {
+                            Dictionary<ulong, HeuristicData> inner;
+                            if (!mid.TryGetValue(self, out inner)) {
+                                inner = new Dictionary<ulong, HeuristicData>();
+                                mid[self] = inner;
+                            }
+
+                            line = NextLine(reader);
+                            CheckEOF(line);
+                            foreach (string entry in line.Split(new char[0], StringSplitOptions.RemoveEmptyEntries)) {
+                                ulong other;
+                                HeuristicData data = ParseHeuristicData(entry, ulong.Parse, out other);
+                                inner[other] = data;
+                            }
+
+                            line = NextLine(reader);
+                        }
+
+                        // EOF
+                        if (line == null) {
+                            break;
+                        }
+                    }
+                }
+
+                // Make sure there's nothing left at end of file.
+                EatLine(reader, null);
+            } catch {
+                Console.WriteLine("error.");
+                ClearHeuristics();
+            } finally {
+                reader.Close();
+            }
+
+            Console.WriteLine("done.");
         }
 
         #endregion

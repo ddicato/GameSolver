@@ -42,6 +42,8 @@ namespace OthelloWpf {
         private volatile OthelloNode board;
         private Thread computationThread;
 
+        public const string ParamsPath = "params.txt";
+
         public MainWindow() {
             InitializeComponent();
 
@@ -53,7 +55,9 @@ namespace OthelloWpf {
                 }
             }
 
-            this.blackPlayer = new AlphaBetaPlayer(5, OthelloNode.Eval0, verbose: true, randomness: true);
+            OthelloNode.ReadHeuristics(ParamsPath);
+
+            this.blackPlayer = new AlphaBetaPlayer(5, node => node.PatternScore(), verbose: true, randomness: true);
             this.whitePlayer = new AlphaBetaPlayer(5, OthelloNode.Eval1, verbose: true, randomness: true);
 
             //this.blackPlayer = new RandomPlayer();

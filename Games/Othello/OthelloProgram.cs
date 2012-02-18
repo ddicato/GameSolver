@@ -18,9 +18,12 @@ namespace Othello {
         // TODO: verbosity levels: Board, Turn, Game, GameSet, Output, None
         static void Main(string[] args) {
             const bool verbose = false;
-            const int randomTrainingGames = 500;
-            const int selfTrainingGames = 1000;
-            const int games = 500;
+            const int randomTrainingGames = 100;
+            const int selfTrainingGames = 100;
+            const int games = 100;
+            const string path = "params.txt";
+
+            OthelloNode.ReadHeuristics(path);
 
             Player<OthelloNode> p0 = new AlphaBetaPlayer(1, node => node.PatternScore(), verbose: verbose, randomness: false, exploring: false);
             Player<OthelloNode> p1 = new RandomPlayer();
@@ -37,9 +40,11 @@ namespace Othello {
             
             PlayGames(p0, p1, games, verbose, training: true, outputLog: "2_AdversarialPhase.txt");
 
-            //StreamWriter writer = new StreamWriter("params.txt", false);
-            //OthelloNode.WriteHeuristics(writer);
-            //writer.Close();
+            try {
+                OthelloNode.WriteHeuristics(path);
+            } catch {
+                Console.WriteLine("Error writing heuristics to {0}", path);
+            }
 
             Console.WriteLine("Press Enter to exit.");
             Console.ReadLine();
