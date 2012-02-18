@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Text;
 
@@ -17,38 +18,50 @@ namespace Othello {
         // TODO: verbosity levels: Board, Turn, Game, GameSet, Output, None
         static void Main(string[] args) {
             const bool verbose = false;
-            const int trainingGames = 10000;
-            const int games = 100;
+            const int randomTrainingGames = 500;
+            const int selfTrainingGames = 500;
+            const int games = 500;
 
-            List<OthelloNode> temp = new List<OthelloNode>();
-            Player<OthelloNode> p0 = new AlphaBetaPlayer(1, node => node.PatternScore(), verbose: verbose, randomness: true);
-            Player<OthelloNode> p1 = new AlphaBetaPlayer(1, node => node.FeatureScore(), verbose: verbose, randomness: true);
+            Player<OthelloNode> p0 = new AlphaBetaPlayer(1, node => node.PatternScore(), verbose: verbose, randomness: false, exploring: false);
+            Player<OthelloNode> p1 = new RandomPlayer();
 
-            PlayGames(p0, p1, trainingGames, verbose, training: true);
+            PlayGames(p0, p1, randomTrainingGames, verbose, training: true, outputLog: "0_RandomPhase.txt");
 
-            p0 = new AlphaBetaPlayer(1, node => node.HeuristicScore(), verbose: false, randomness: true);
-            p1 = new AlphaBetaPlayer(1, OthelloNode.Eval1, verbose: false, randomness: true);
-            //p1 = new RandomPlayer();
+            p0 = new AlphaBetaPlayer(1, node => node.PatternScore(), verbose: verbose, randomness: true, exploring: false);
+            p1 = new AlphaBetaPlayer(2, node => node.PatternScore(), verbose: verbose, randomness: true, exploring: false);
 
-            PlayGames(p0, p1, games, verbose, training: false);
+            PlayGames(p0, p1, selfTrainingGames, verbose, training: true, outputLog: "1_SelfPhase.txt");
+
+            p0 = new AlphaBetaPlayer(1, node => node.PatternScore(), verbose: false, randomness: true, exploring: false);
+            p1 = new AlphaBetaPlayer(1, OthelloNode.Eval1, verbose: false, randomness: true, exploring: false);
+            
+            PlayGames(p0, p1, games, verbose, training: true, outputLog: "2_AdversarialPhase.txt");
+
+            //StreamWriter writer = new StreamWriter("params.txt", false);
+            //OthelloNode.WriteHeuristics(writer);
+            //writer.Close();
 
             Console.WriteLine("Press Enter to exit.");
             Console.ReadLine();
         }
 
+        // TODO: Parallelize this. We're wasting cycles.
         private static void PlayGames(
             Player<OthelloNode> p0,
             Player<OthelloNode> p1,
             int games = 2,
             bool verbose = false,
-            bool training = true) {
+            bool training = true,
+            string outputLog = null) {
+            const double emaFactor = 0.99;
+
             int totalScore = 0;
             int p0Wins = 0;
             int p1Wins = 0;
             double p0WinsEma = 0.0;
             double p1WinsEma = 0.0;
             double scoreEma = 0.0;
-            const double emaFactor = 0.95;
+            StreamWriter writer = null;
             for (int i = 0; i < games; i++) {
                 if (i > 0) {
                     Console.WriteLine();
@@ -86,6 +99,11 @@ namespace Othello {
                         p1WinsEma = p1WinsEma * emaFactor + (1.0 - emaFactor);
                         p0WinsEma *= emaFactor;
                     }
+                } else {
+                    if (i > 0) {
+                        p0WinsEma *= emaFactor;
+                        p1WinsEma *= emaFactor;
+                    }
                 }
 
                 Console.WriteLine(
@@ -98,6 +116,27 @@ namespace Othello {
                     100.0 * p0WinsEma,
                     100.0 * p1WinsEma,
                     scoreEma);
+
+                if (i == 0 && outputLog != null) {
+                    try {
+                        writer = new StreamWriter(outputLog, false);
+                        writer.WriteLine("P0WinsAvg P0WinsEma P1WinsAvg P1WinsEma ScoreAvg ScoreEma");
+                    } catch { }
+                }
+                if (writer != null) {
+                    writer.WriteLine(
+                        "{0:0.0000} {1:0.0000} {2:0.0000} {3:0.0000} {4:+00.00;-00.00} {5:+00.00;-00.00}",
+                        (double)p0Wins / (i + 1),
+                        p0WinsEma,
+                        (double)p1Wins / (i + 1),
+                        p1WinsEma,
+                        (double)totalScore / (i + 1),
+                        scoreEma);
+                }
+            }
+
+            if (writer != null) {
+                writer.Close();
             }
 
             Console.WriteLine(

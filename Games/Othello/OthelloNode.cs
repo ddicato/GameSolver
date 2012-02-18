@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Text;
 
@@ -219,11 +220,13 @@ namespace Othello {
                 Corner52Ccw
             };
 
-            PatternScores = new Dictionary<int, Dictionary<ulong, Dictionary<ulong, PatternData>>>[PatternSets.Length];
+            PatternScores = new Dictionary<int, Dictionary<ulong, Dictionary<ulong, HeuristicData>>>[PatternSets.Length];
             for (int i = 0; i < PatternScores.Length; i++) {
-                PatternScores[i] = new Dictionary<int, Dictionary<ulong, Dictionary<ulong, PatternData>>>();
+                PatternScores[i] = new Dictionary<int, Dictionary<ulong, Dictionary<ulong, HeuristicData>>>();
             }
 
+            // TODO: these are equally weighted. Measure how well they correlate with victory and tune
+            //       weights accordingly. Also find a weight with respect to Pattern evaluation
             Features = new Func<OthelloNode, int>[] {
                 node => node.PieceCountSpread(),
                 node => node.CornerSpread(),
@@ -240,9 +243,9 @@ namespace Othello {
             };
 
             // TODO: add interpolation to training function
-            FeatureScores = new Dictionary<int, Dictionary<int, PatternData>>[Features.Length];
+            FeatureScores = new Dictionary<int, Dictionary<int, HeuristicData>>[Features.Length];
             for (int i = 0; i < Features.Length; i++) {
-                FeatureScores[i] = new Dictionary<int, Dictionary<int, PatternData>>();
+                FeatureScores[i] = new Dictionary<int, Dictionary<int, HeuristicData>>();
             }
         }
 
@@ -761,25 +764,25 @@ namespace Othello {
 
         private static readonly ulong[][] PatternSets;
 
-        private static readonly Dictionary<int, Dictionary<ulong, Dictionary<ulong, PatternData>>>[] PatternScores;
+        private static readonly Dictionary<int, Dictionary<ulong, Dictionary<ulong, HeuristicData>>>[] PatternScores;
         private static readonly List<OthelloNode> GameHistory = new List<OthelloNode>(); // TODO: make thread-safe?
 
-        private static readonly Func<OthelloNode, int>[] Features;
-        private static readonly string[] FeatureNames;
-        private static readonly Dictionary<int, Dictionary<int, PatternData>>[] FeatureScores;
+        public static readonly Func<OthelloNode, int>[] Features;
+        public static readonly string[] FeatureNames;
+        private static readonly Dictionary<int, Dictionary<int, HeuristicData>>[] FeatureScores;
 
-        private struct PatternData {// TODO: also holds feature data. rename?
+        private struct HeuristicData {
             public int Score;
             public int Count;
             public double TotalScore;
 
-            public PatternData(int score) {
+            public HeuristicData(int score) {
                 this.Score = score;
                 this.Count = 1;
                 this.TotalScore = (double)score;
             }
 
-            public PatternData(PatternData data, int newScore) {
+            public HeuristicData(HeuristicData data, int newScore) {
                 this.Count = data.Count + 1;
                 this.TotalScore = data.TotalScore + newScore;
                 this.Score = (int)(this.TotalScore / this.Count);
@@ -794,9 +797,9 @@ namespace Othello {
 
             for (int i = 0; i < PatternSets.Length; i++) {
                 foreach (ulong mask in PatternSets[i]) {
-                    Dictionary<ulong, Dictionary<ulong, PatternData>> mid;
-                    Dictionary<ulong, PatternData> inner;
-                    PatternData data;
+                    Dictionary<ulong, Dictionary<ulong, HeuristicData>> mid;
+                    Dictionary<ulong, HeuristicData> inner;
+                    HeuristicData data;
                     if (PatternScores[i].TryGetValue(pieceCount, out mid) &&
                         mid.TryGetValue(self & mask, out inner) &&
                         inner.TryGetValue(other & mask, out data)) {
@@ -806,8 +809,8 @@ namespace Othello {
             }
 
             for (int i = 0; i < Features.Length; i++) {
-                Dictionary<int, PatternData> inner;
-                PatternData data;
+                Dictionary<int, HeuristicData> inner;
+                HeuristicData data;
                 if (FeatureScores[i].TryGetValue(pieceCount, out inner) &&
                     inner.TryGetValue(Features[i](this), out data)) {
                     result += data.Score;
@@ -825,9 +828,9 @@ namespace Othello {
 
             for (int i = 0; i < PatternSets.Length; i++) {
                 foreach (ulong mask in PatternSets[i]) {
-                    Dictionary<ulong, Dictionary<ulong, PatternData>> mid;
-                    Dictionary<ulong, PatternData> inner;
-                    PatternData data;
+                    Dictionary<ulong, Dictionary<ulong, HeuristicData>> mid;
+                    Dictionary<ulong, HeuristicData> inner;
+                    HeuristicData data;
                     if (PatternScores[i].TryGetValue(pieceCount, out mid) &&
                         mid.TryGetValue(self & mask, out inner) &&
                         inner.TryGetValue(other & mask, out data)) {
@@ -844,11 +847,47 @@ namespace Othello {
             int result = 0;
 
             for (int i = 0; i < Features.Length; i++) {
-                Dictionary<int, PatternData> inner;
-                PatternData data;
+                Dictionary<int, HeuristicData> inner;
+                HeuristicData data;
                 if (FeatureScores[i].TryGetValue(pieceCount, out inner) &&
                     inner.TryGetValue(Features[i](this), out data)) {
                     result += data.Score;
+                }
+            }
+
+            return result;
+        }
+
+        public int UnknownPatterns() {
+            ulong self = this.PlayerBoard;
+            ulong other = this.OtherBoard;
+            int pieceCount = BitCount(this.Occupied);
+            int result = 0;
+
+            for (int i = 0; i < PatternSets.Length; i++) {
+                foreach (ulong mask in PatternSets[i]) {
+                    Dictionary<ulong, Dictionary<ulong, HeuristicData>> mid;
+                    Dictionary<ulong, HeuristicData> inner;
+                    if (!PatternScores[i].TryGetValue(pieceCount, out mid) ||
+                        !mid.TryGetValue(self & mask, out inner) ||
+                        !inner.ContainsKey(other & mask)) {
+                        result++;
+                    }
+                }
+            }
+
+            return result;
+        }
+
+        public int UnknownFeatures() {
+            int pieceCount = BitCount(this.Occupied);
+            int result = 0;
+
+            for (int i = 0; i < Features.Length; i++) {
+                Dictionary<int, HeuristicData> inner;
+                if (!FeatureScores[i].TryGetValue(pieceCount, out inner) ||
+                    !inner.ContainsKey(Features[i](this))) {
+                    result++;
                 }
             }
 
@@ -878,23 +917,23 @@ namespace Othello {
 
                 for (int i = 0; i < PatternSets.Length; i++) {
                     foreach (ulong mask in PatternSets[i]) {
-                        Dictionary<ulong, Dictionary<ulong, PatternData>> mid;
+                        Dictionary<ulong, Dictionary<ulong, HeuristicData>> mid;
                         if (!PatternScores[i].TryGetValue(pieceCount, out mid)) {
-                            mid = new Dictionary<ulong, Dictionary<ulong, PatternData>>();
+                            mid = new Dictionary<ulong, Dictionary<ulong, HeuristicData>>();
                             PatternScores[i][pieceCount] = mid;
                         }
 
-                        Dictionary<ulong, PatternData> inner;
+                        Dictionary<ulong, HeuristicData> inner;
                         if (!mid.TryGetValue(self & mask, out inner)) {
-                            inner = new Dictionary<ulong, PatternData>();
+                            inner = new Dictionary<ulong, HeuristicData>();
                             mid[self & mask] = inner;
                         }
 
-                        PatternData data;
+                        HeuristicData data;
                         if (inner.TryGetValue(other & mask, out data)) {
-                            inner[other & mask] = new PatternData(data, relativeScore);
+                            inner[other & mask] = new HeuristicData(data, relativeScore);
                         } else {
-                            inner[other & mask] = new PatternData(relativeScore);
+                            inner[other & mask] = new HeuristicData(relativeScore);
                         }
                     }
                 }
@@ -902,17 +941,17 @@ namespace Othello {
                 for (int i = 0; i < Features.Length; i++) {
                     int score = Features[i](node);
 
-                    Dictionary<int, PatternData> inner;
+                    Dictionary<int, HeuristicData> inner;
                     if (!FeatureScores[i].TryGetValue(pieceCount, out inner)) {
-                        inner = new Dictionary<int, PatternData>();
+                        inner = new Dictionary<int, HeuristicData>();
                         FeatureScores[i][pieceCount] = inner;
                     }
 
-                    PatternData data;
+                    HeuristicData data;
                     if (inner.TryGetValue(score, out data)) {
-                        inner[score] = new PatternData(data, relativeScore);
+                        inner[score] = new HeuristicData(data, relativeScore);
                     } else {
-                        inner[score] = new PatternData(relativeScore);
+                        inner[score] = new HeuristicData(relativeScore);
                     }
                 }
             }
@@ -922,9 +961,76 @@ namespace Othello {
 
         #endregion
 
+        #region Serialization
+
+        public static void WriteHeuristics(StreamWriter writer) {
+            const string indent = "    ";
+            const string comment = "#   ";
+
+            for (int i = 0; i < Features.Length; i++) {
+                writer.WriteLine("{0}Feature {1}: {2}", comment, i, FeatureNames[i]);
+                writer.WriteLine("Feature");
+
+                List<int> pieceCounts = FeatureScores[i].Keys.ToList();
+                pieceCounts.Sort();
+
+                writer.WriteLine("{0}Data for {1} piece counts", comment, pieceCounts.Count);
+                foreach (int pieceCount in pieceCounts) {
+                    writer.WriteLine("PieceCount {0}", pieceCount);
+
+                    List<int> keys = FeatureScores[i][pieceCount].Keys.ToList();
+                    keys.Sort();
+
+                    writer.WriteLine("{0}{1} Entries", comment + indent, keys.Count);
+                    foreach (int key in keys) {
+                        HeuristicData data = FeatureScores[i][pieceCount][key];
+                        writer.Write(" {0},{1},{2},{3}", key, data.Score, data.Count, data.TotalScore);
+                    }
+                    writer.WriteLine();
+                }
+            }
+
+            for (int i = 0; i < PatternSets.Length; i++) {
+                writer.WriteLine("{0}PatternSet {1}", comment, i);
+                writer.WriteLine("PatternSet");
+
+                ulong[] masks = PatternSets[i];
+                for (int j = 0; j < masks.Length; j++) {
+                    ulong mask = masks[j];
+                    writer.WriteLine("{0}Pattern {1}", comment + indent, j);
+                    writer.WriteLine("Pattern");
+                    writer.Write(PrintUlong(mask, comment + indent)); // PrintUlong includes its own newline
+                }
+
+                List<int> pieceCounts = PatternScores[i].Keys.ToList();
+                pieceCounts.Sort();
+
+                writer.WriteLine("{0}Data for {1} piece counts", comment, pieceCounts.Count);
+                foreach (int pieceCount in pieceCounts) {
+                    writer.WriteLine("PieceCount {0}", pieceCount);
+
+                    Dictionary<ulong, Dictionary<ulong, HeuristicData>> selfBoards = PatternScores[i][pieceCount];
+                    writer.WriteLine("{0}{1} Entries", comment + indent, selfBoards.Count);
+                    foreach (ulong self in selfBoards.Keys) {
+                        Dictionary<ulong, HeuristicData> otherBoards = selfBoards[self];
+                        writer.WriteLine("{0}{1} Sub-Entries", comment + indent + indent, otherBoards.Count);
+
+                        writer.Write("{0}:", self);
+                        foreach (ulong other in otherBoards.Keys) {
+                            HeuristicData data = otherBoards[other];
+                            writer.Write(" {0},{1},{2},{3}", other, data.Score, data.Count, data.TotalScore);
+                        }
+                        writer.WriteLine();
+                    }
+                }
+            }
+        }
+
+        #endregion
+
         #region Pretty-printing
 
-        public static string PrintUlong(ulong value) {
+        public static string PrintUlong(ulong value, string prefix = null) {
             const char empty = '.';
             const char occupied = '+';
 
@@ -933,6 +1039,8 @@ namespace Othello {
                 for (int i = 0; i < 8; i++) {
                     if (i > 0) {
                         sb.Append(' ');
+                    } else if (!string.IsNullOrEmpty(prefix)) {
+                        sb.Append(prefix);
                     }
                     sb.Append((value & Square[i, j]) == 0 ? empty : occupied);
                 }

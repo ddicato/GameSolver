@@ -21,6 +21,11 @@ namespace Othello {
             set;
         }
 
+        public bool SolveEndgame {
+            get;
+            set;
+        }
+
         public bool MoveOrdering {
             get;
             set;
@@ -31,7 +36,7 @@ namespace Othello {
             set;
         }
 
-        public bool SolveEndgame {
+        public bool Exploring {
             get;
             set;
         }
@@ -42,7 +47,8 @@ namespace Othello {
             bool verbose = false,
             bool moveOrdering = true,
             bool solveEndgame = true,
-            bool randomness = false) {
+            bool randomness = false,
+            bool exploring = false) {
             if (depth <= 0) {
                 throw new ArgumentOutOfRangeException("must be positive");
             }
@@ -58,6 +64,7 @@ namespace Othello {
             this.MoveOrdering = moveOrdering;
             this.Randomness = randomness;
             this.SolveEndgame = solveEndgame;
+            this.Exploring = exploring;
         }
 
         private void Initialize() {
@@ -215,11 +222,23 @@ namespace Othello {
                 // TODO: add a way to explore nodes that don't have a lot of known feature or pattern values
                 // Inject some randomness if we're not solving the endgame. Nodes are ordered by score and
                 // have an exponentially decreasing probability of getting picked the worse they are.
+                // If we're attempting to explore less-researched nodes, the probability is skewed accordingly.
                 OrderMovesDescending(metadata);
                 for (int i = 0; i < metadata.Count; i++) {
                     best = metadata[i].Item1;
                     bestScore = metadata[i].Item2;
-                    if (this.random.Next(8) > 0) {
+
+                    int probabilityReciprocal = 8;
+                    if (this.Exploring) {
+                        // Increase likelihood of skipping this node if most of the features are known.
+                        double known = OthelloNode.Features.Length - nodes[best].UnknownFeatures();
+                        known *= known;
+                        known /= OthelloNode.Features.Length * OthelloNode.Features.Length;
+                        known = Math.Sqrt(known);
+
+                        probabilityReciprocal += (int)(probabilityReciprocal * known);
+                    }
+                    if (this.random.Next(probabilityReciprocal) > 0) {
                         break;
                     }
                 }
