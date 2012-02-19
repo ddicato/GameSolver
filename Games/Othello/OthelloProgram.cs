@@ -19,31 +19,56 @@ namespace Othello {
         static void Main(string[] args) {
             const bool verbose = false;
             const int randomTrainingGames = 100;
-            const int selfTrainingGames = 100;
-            const int games = 100;
-            const string path = "params.txt";
+            const int selfTrainingGames = 50;
+            const int adversarialGames = 100;
+            const string outputPath = "params.txt";
 
-            OthelloNode.ReadHeuristics(path);
+            Player<OthelloNode> p0;
+            Player<OthelloNode> p1;
 
-            Player<OthelloNode> p0 = new AlphaBetaPlayer(1, node => node.PatternScore(), verbose: verbose, randomness: false, exploring: false);
-            Player<OthelloNode> p1 = new RandomPlayer();
+            int randomGamesPlayed = 0;
+            int selfGamesPlayed = 0;
+            int adversarialGamesPlayed = 0;
+            int depth = 4;
 
-            PlayGames(p0, p1, randomTrainingGames, verbose, training: true, outputLog: "0_RandomPhase.txt");
-
-            p0 = new AlphaBetaPlayer(1, node => node.PatternScore(), verbose: verbose, randomness: true, exploring: true);
-            p1 = new AlphaBetaPlayer(1, node => node.PatternScore(), verbose: verbose, randomness: true, exploring: true);
-
-            PlayGames(p0, p1, selfTrainingGames, verbose, training: true, outputLog: "1_SelfPhase.txt");
-
-            p0 = new AlphaBetaPlayer(1, node => node.PatternScore(), verbose: false, randomness: true, exploring: false);
-            p1 = new AlphaBetaPlayer(1, OthelloNode.Eval1, verbose: false, randomness: true, exploring: false);
             
-            PlayGames(p0, p1, games, verbose, training: true, outputLog: "2_AdversarialPhase.txt");
+            while (true) {
+                Console.WriteLine("Enter name of file to load params from (blank to continue): ");
+                string path = Console.ReadLine();
+                if (string.IsNullOrWhiteSpace(path)) {
+                    break;
+                }
+                OthelloNode.ReadHeuristics(path);
+            }
+            OthelloNode.WriteHeuristics(outputPath);
 
-            try {
-                OthelloNode.WriteHeuristics(path);
-            } catch {
-                Console.WriteLine("Error writing heuristics to {0}", path);
+            p0 = new AlphaBetaPlayer(depth, node => node.PatternScore(), verbose: verbose, randomness: false);
+            p1 = new RandomPlayer();
+            PlayGames(p0, p1, randomTrainingGames, verbose, training: true);
+
+            randomGamesPlayed += randomTrainingGames;
+            Console.WriteLine("** Played {0} games against random **", randomGamesPlayed);
+            Console.WriteLine();
+            OthelloNode.WriteHeuristics(outputPath);
+
+            while (true) {
+                p0 = new AlphaBetaPlayer(depth, node => node.PatternScore(), verbose: verbose, randomness: true, exploring: true);
+                p1 = new AlphaBetaPlayer(depth, node => node.PatternScore(), verbose: verbose, randomness: true, exploring: true);
+                PlayGames(p0, p1, selfTrainingGames, verbose, training: true);
+
+                selfGamesPlayed += selfTrainingGames;
+                Console.WriteLine("** Played {0} games against self **", selfGamesPlayed);
+                Console.WriteLine();
+                OthelloNode.WriteHeuristics(outputPath);
+
+                p0 = new AlphaBetaPlayer(depth, node => node.PatternScore(), verbose: false, randomness: true, exploring: true);
+                p1 = new AlphaBetaPlayer(depth, OthelloNode.Eval1, verbose: false, randomness: true, exploring: true);
+                PlayGames(p0, p1, adversarialGames, verbose, training: false);
+
+                adversarialGamesPlayed += adversarialGames;
+                Console.WriteLine("** Played {0} games against adversary **", adversarialGamesPlayed);
+                Console.WriteLine();
+                OthelloNode.WriteHeuristics(outputPath);
             }
 
             Console.WriteLine("Press Enter to exit.");
@@ -63,8 +88,8 @@ namespace Othello {
             int totalScore = 0;
             int p0Wins = 0;
             int p1Wins = 0;
-            double p0WinsEma = 0.0;
-            double p1WinsEma = 0.0;
+            double p0WinsEma = 0.5;
+            double p1WinsEma = 0.5;
             double scoreEma = 0.0;
 
             StreamWriter writer = null;
@@ -82,41 +107,35 @@ namespace Othello {
                 Console.WriteLine("Game {0} of {1}", i + 1, games);
 
                 int result;
+                List<OthelloNode> gameHistory = new List<OthelloNode>();
                 if ((i & 1) == 0) {
-                    result = GameLoop(p0, "Player 1", p1, "Player 2", verbose, training);
+                    result = GameLoop(p0, "Player 1", p1, "Player 2", gameHistory, verbose, training);
                     if (training) {
-                        OthelloNode.Train(result, includeSymmetries: true);
+                        OthelloNode.Train(gameHistory, result, includeSymmetries: true);
                     }
                 } else {
-                    result = -GameLoop(p1, "Player 2", p0, "Player 1", verbose, training);
+                    result = GameLoop(p1, "Player 2", p0, "Player 1", gameHistory, verbose, training);
                     if (training) {
-                        OthelloNode.Train(-result, includeSymmetries: true);
+                        OthelloNode.Train(gameHistory, result, includeSymmetries: true);
                     }
+
+                    // We want the result from p0's point of view.
+                    result = -result;
                 }
 
                 totalScore += result;
                 scoreEma = scoreEma * emaFactor + result * (1.0 - emaFactor);
                 if (result > 0) {
                     p0Wins++;
-                    if (i == 0) {
-                        p0WinsEma = 1.0;
-                    } else {
-                        p0WinsEma = p0WinsEma * emaFactor + (1.0 - emaFactor);
-                        p1WinsEma *= emaFactor;
-                    }
+                    p0WinsEma = p0WinsEma * emaFactor + (1.0 - emaFactor);
+                    p1WinsEma *= emaFactor;
                 } else if (result < 0) {
                     p1Wins++;
-                    if (i == 0) {
-                        p1WinsEma = 1.0;
-                    } else {
-                        p1WinsEma = p1WinsEma * emaFactor + (1.0 - emaFactor);
-                        p0WinsEma *= emaFactor;
-                    }
+                    p1WinsEma = p1WinsEma * emaFactor + (1.0 - emaFactor);
+                    p0WinsEma *= emaFactor;
                 } else {
-                    if (i > 0) {
-                        p0WinsEma *= emaFactor;
-                        p1WinsEma *= emaFactor;
-                    }
+                    p0WinsEma *= emaFactor;
+                    p1WinsEma *= emaFactor;
                 }
 
                 Console.WriteLine(
@@ -160,8 +179,15 @@ namespace Othello {
             string blackName,
             Player<OthelloNode> white,
             string whiteName,
+            List<OthelloNode> gameHistory,
             bool verbose = false,
             bool training = true) {
+            if (gameHistory == null) {
+                training = false;
+            } else {
+                gameHistory.Clear();
+            }
+
             OthelloNode board = new OthelloNode();
             List<OthelloNode> children;
             while (!board.IsGameOver) {
@@ -194,7 +220,7 @@ namespace Othello {
 
                 board = children[index];
                 if (training) {
-                    OthelloNode.AddIntermediateState(board);
+                    gameHistory.Add(board);
                 }
             }
 

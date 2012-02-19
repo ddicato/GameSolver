@@ -864,7 +864,6 @@ namespace Othello {
         private static readonly ulong[][] PatternSets;
 
         private static readonly Dictionary<int, Dictionary<ulong, Dictionary<ulong, HeuristicData>>>[] PatternScores;
-        private static readonly List<OthelloNode> GameHistory = new List<OthelloNode>(); // TODO: make thread-safe?
 
         public static readonly Func<OthelloNode, int>[] Features;
         public static readonly string[] FeatureNames;
@@ -884,6 +883,12 @@ namespace Othello {
             public HeuristicData(HeuristicData data, int newScore) {
                 this.Count = data.Count + 1;
                 this.TotalScore = data.TotalScore + newScore;
+                this.Score = (int)(this.TotalScore / this.Count);
+            }
+
+            public HeuristicData(HeuristicData a, HeuristicData b) {
+                this.Count = a.Count + b.Count;
+                this.TotalScore = a.TotalScore + b.TotalScore;
                 this.Score = (int)(this.TotalScore / this.Count);
             }
         }
@@ -997,28 +1002,22 @@ namespace Othello {
 
         #region Learning
 
-        public static void AddIntermediateState(OthelloNode node) {
-            GameHistory.Add(node);
-        }
-
         // finalScore is black's piece count minus white's
-        public static void Train(int finalScore, bool includeSymmetries = true) {
+        public static void Train(List<OthelloNode> gameHistory, int finalScore, bool includeSymmetries = true) {
             // TODO: interpolate between turns when averaging. For features, also interpolate between feature values
             // TODO: more and better learning algorithms: Gradient descent, Temporal-difference
             // Score will be stored as an int, so we multiply to get more significant digits.
             finalScore *= 1000;
 
             if (includeSymmetries) {
-                foreach (OthelloNode node in GameHistory) {
+                foreach (OthelloNode node in gameHistory) {
                     foreach (OthelloNode permutation in GetSymmetries(node)) {
                         TrainSingle(permutation, finalScore);
                     }
                 }
-            } else foreach (OthelloNode node in GameHistory) {
+            } else foreach (OthelloNode node in gameHistory) {
                 TrainSingle(node, finalScore);
             }
-
-            GameHistory.Clear();
         }
 
         private static void TrainSingle(OthelloNode node, int finalScore) {
@@ -1241,15 +1240,13 @@ namespace Othello {
         public static void ReadHeuristics(string path) {
             try {
                 if (!File.Exists(path)) {
-                    return;
+                    Console.WriteLine("File not found.");
                 }
             } catch {
                 return;
             }
 
             Console.Write("Loading evaluation parameters...");
-
-            ClearHeuristics();
             StreamReader reader = new StreamReader(path);
 
             try {
@@ -1269,8 +1266,13 @@ namespace Othello {
                         CheckEOF(line);
                         foreach (string entry in line.Split(new char[0], StringSplitOptions.RemoveEmptyEntries)) {
                             int key;
+                            HeuristicData orig;
                             HeuristicData data = ParseHeuristicData(entry, int.Parse, out key);
-                            inner[key] = data;
+                            if (inner.TryGetValue(key, out orig)) {
+                                inner[key] = new HeuristicData(orig, data);
+                            } else {
+                                inner[key] = data;
+                            }
                         }
                     }
                 }
@@ -1302,8 +1304,13 @@ namespace Othello {
                             CheckEOF(line);
                             foreach (string entry in line.Split(new char[0], StringSplitOptions.RemoveEmptyEntries)) {
                                 ulong other;
+                                HeuristicData orig;
                                 HeuristicData data = ParseHeuristicData(entry, ulong.Parse, out other);
-                                inner[other] = data;
+                                if (inner.TryGetValue(other, out orig)) {
+                                    inner[other] = new HeuristicData(orig, data);
+                                } else {
+                                    inner[other] = data;
+                                }
                             }
 
                             line = NextLine(reader);
