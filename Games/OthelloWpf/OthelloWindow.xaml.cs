@@ -47,6 +47,8 @@ namespace OthelloWpf {
         public OthelloWindow() {
             InitializeComponent();
 
+            this.SearchDepth = (int)this.SearchDepthSlider.Minimum;
+
             BindingFlags bindingFlags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
             for (int j = 0; j < 8; j++) {
                 for (int i = 0; i < 8; i++) {
@@ -55,13 +57,7 @@ namespace OthelloWpf {
                 }
             }
 
-            //OthelloNode.ReadHeuristics(ParamsPath);
-
-            this.blackPlayer = new AlphaBetaPlayer(5, node => node.PatternScore(), verbose: true, randomness: true);
-            this.whitePlayer = new AlphaBetaPlayer(5, OthelloNode.Eval1, verbose: true, randomness: true);
-
-            //this.blackPlayer = new RandomPlayer();
-            //this.whitePlayer= new RandomPlayer();
+            OthelloNode.ReadHeuristics(ParamsPath);
         }
 
         #region Dependency Properties
@@ -74,6 +70,15 @@ namespace OthelloWpf {
 
         public static DependencyProperty SearchDepthProperty =
             DependencyProperty.Register("SearchDepth", typeof(int), typeof(OthelloWindow));
+
+        public static DependencyProperty HumanBlackProperty =
+            DependencyProperty.Register("HumanBlack", typeof(bool), typeof(OthelloWindow));
+
+        public static DependencyProperty HumanWhiteProperty =
+            DependencyProperty.Register("HumanWhite", typeof(bool), typeof(OthelloWindow));
+
+        public static DependencyProperty AiSwapProperty =
+            DependencyProperty.Register("AiSwap", typeof(bool), typeof(OthelloWindow));
 
         public bool Randomness {
             get { return (bool)this.GetValue(RandomnessProperty); }
@@ -90,6 +95,25 @@ namespace OthelloWpf {
             set { this.SetValue(SearchDepthProperty, value); }
         }
 
+        public bool HumanBlack {
+            get { return (bool)this.GetValue(HumanBlackProperty); }
+            set { this.SetValue(HumanBlackProperty, value); }
+        }
+
+        public bool HumanWhite {
+            get { return (bool)this.GetValue(HumanWhiteProperty); }
+            set { this.SetValue(HumanWhiteProperty, value); }
+        }
+
+        public bool AiSwap {
+            get { return (bool)this.GetValue(AiSwapProperty); }
+            set { this.SetValue(AiSwapProperty, value); }
+        }
+
+        private void SearchDepthSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e) {
+            this.SearchDepth = (int)e.NewValue;
+        }
+
         #endregion
 
         private static int Eval0(OthelloNode node) {
@@ -101,61 +125,80 @@ namespace OthelloWpf {
         }
 
         private void InitGame() {
-            if (this.computationThread != null) {
-                this.computationThread.Abort();
-                this.computationThread = null;
-            }
+            this.AbortComputation();
 
             this.waitingForMove = false;
             this.board = new OthelloNode();
             this.UpdateBoard();
 
             this.StartButton.IsEnabled = true;
-            this.SwitchButton.IsEnabled = true;
+        }
+
+        private void AbortComputation() {
+            if (this.computationThread != null) {
+                this.computationThread.Abort();
+                this.computationThread = null;
+            }
         }
 
         private void InitPlayers() {
+            Player<OthelloNode> black =
+                new MtdFPlayer(this.SearchDepth, node => node.PatternScore(), verbose: true, solveEndgame: true, randomness: this.Randomness);
+                //new RandomPlayer();
+            Player<OthelloNode> white =
+                new MtdFPlayer(this.SearchDepth, OthelloNode.Eval1, verbose: true, solveEndgame: true, randomness: this.Randomness);
+                //new RandomPlayer();
 
+            if (this.AiSwap) {
+                this.blackPlayer = white;
+                this.whitePlayer = black;
+            } else {
+                this.blackPlayer = black;
+                this.whitePlayer = white;
+            }
+
+            if (this.HumanBlack) {
+                this.blackPlayer = null;
+            }
+            if (this.HumanWhite) {
+                this.whitePlayer = null;
+            }
         }
 
         private void GameLoop() {
-            try {
-                if (this.board != null) {
-                    List<OthelloNode> children = new List<OthelloNode>();
-                    while (!this.board.IsGameOver) {
-                        const int monteCarloIters = 0;
-                        if (monteCarloIters > 0) {
-                            Console.Write("Monte-carlo score: ");
-                            int monteCarloScore = board.MonteCarlo(monteCarloIters);
-                            Console.WriteLine("{0:0.000}", monteCarloScore / (double)monteCarloIters);
-                        }
+            this.Dispatcher.Invoke(new Action(this.InitPlayers));
 
-                        this.board.GetChildren(children);
-                        if (children.Count == 0) {
-                            // TODO: error
-                            return;
-                        }
-
-                        int index = ((this.board.Turn == OthelloNode.BLACK ?
-                            this.blackPlayer :
-                            this.whitePlayer) ??
-                            this).SelectNode(children);
-
-                        if (index < 0 || index >= children.Count) {
-                            // TODO: disqualify player
-                            return;
-                        }
-
-                        this.board = children[index];
-                        this.UpdateBoard();
+            if (this.board != null) {
+                List<OthelloNode> children = new List<OthelloNode>();
+                while (!this.board.IsGameOver) {
+                    const int monteCarloIters = 0;
+                    if (monteCarloIters > 0) {
+                        Console.Write("Monte-carlo score: ");
+                        int monteCarloScore = board.MonteCarlo(monteCarloIters);
+                        Console.WriteLine("{0:0.000}", monteCarloScore / (double)monteCarloIters);
                     }
 
-                    board.PrintScore();
+                    this.board.GetChildren(children);
+                    if (children.Count == 0) {
+                        // TODO: error
+                        return;
+                    }
+
+                    int index = ((this.board.Turn == OthelloNode.BLACK ?
+                        this.blackPlayer :
+                        this.whitePlayer) ??
+                        this).SelectNode(children);
+
+                    if (index < 0 || index >= children.Count) {
+                        // TODO: disqualify player
+                        return;
+                    }
+
+                    this.board = children[index];
+                    this.UpdateBoard();
                 }
-            } finally {
-                this.Dispatcher.Invoke(new Action(delegate() {
-                    this.SwitchButton.IsEnabled = true;
-                }));
+
+                board.PrintScore();
             }
         }
 
@@ -166,12 +209,8 @@ namespace OthelloWpf {
 
         private void StartButton_Click(object sender, RoutedEventArgs e) {
             this.StartButton.IsEnabled = false;
-            this.SwitchButton.IsEnabled = false;
 
-            if (this.computationThread != null) {
-                this.computationThread.Abort();
-                this.computationThread = null;
-            }
+            this.AbortComputation();
             Thread thread = new Thread(this.GameLoop);
             thread.Start();
             this.computationThread = thread;
@@ -179,12 +218,6 @@ namespace OthelloWpf {
 
         private void ClearButton_Click(object sender, RoutedEventArgs e) {
             this.InitGame();
-        }
-
-        private void SwitchButton_Click(object sender, RoutedEventArgs e) {
-            Player<OthelloNode> temp = this.blackPlayer;
-            this.blackPlayer = this.whitePlayer;
-            this.whitePlayer = temp;
         }
 
         private static bool TryGetCoordinates(object sender, out int column, out int row) {

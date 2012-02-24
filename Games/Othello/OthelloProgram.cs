@@ -19,7 +19,7 @@ namespace Othello {
         static void Main(string[] args) {
             const bool verbose = false;
             const int randomTrainingGames = 0;
-            const int selfTrainingGames = 66;
+            const int selfTrainingGames = 100;
             const int adversarialGames = 50;
             const string outputPath = "params.txt";
 
@@ -28,7 +28,7 @@ namespace Othello {
 
             int selfGamesPlayed = 0;
             int adversarialGamesPlayed = 0;
-            int depth = 4;
+            int depth = 2;
             
             while (true) {
                 Console.WriteLine("Enter name of file to load params from (blank to continue): ");
@@ -40,7 +40,7 @@ namespace Othello {
             }
             OthelloNode.WriteHeuristics(outputPath);
 
-            p0 = new AlphaBetaPlayer(depth, node => node.PatternScore(), verbose: verbose, randomness: false);
+            p0 = new MtdFPlayer(depth, node => node.PatternScore(), verbose: verbose, randomness: false);
             p1 = new RandomPlayer();
             PlayGames(p0, p1, randomTrainingGames, verbose, training: true);
 
@@ -51,8 +51,8 @@ namespace Othello {
             }
 
             while (true) {
-                p0 = new AlphaBetaPlayer(depth, node => node.PatternScore(), verbose: verbose, randomness: true, exploring: true);
-                p1 = new AlphaBetaPlayer(depth, node => node.PatternScore(), verbose: verbose, randomness: true, exploring: true);
+                p0 = new MtdFPlayer(depth, node => node.PatternScore(), verbose: verbose, randomness: true, exploring: true);
+                p1 = new MtdFPlayer(depth, node => node.PatternScore(), verbose: verbose, randomness: true, exploring: true);
                 PlayGames(p0, p1, selfTrainingGames, verbose, training: true);
 
                 selfGamesPlayed += selfTrainingGames;
@@ -60,8 +60,8 @@ namespace Othello {
                 Console.WriteLine();
                 OthelloNode.WriteHeuristics(outputPath);
 
-                p0 = new AlphaBetaPlayer(depth, node => node.PatternScore(), verbose: false, randomness: true, exploring: true);
-                p1 = new AlphaBetaPlayer(depth, OthelloNode.Eval1, verbose: false, randomness: true, exploring: true);
+                p0 = new MtdFPlayer(depth, node => node.PatternScore(), verbose: false, randomness: true, exploring: true);
+                p1 = new MtdFPlayer(depth, OthelloNode.Eval1, verbose: false, randomness: true, exploring: true);
                 PlayGames(p0, p1, adversarialGames, verbose, training: false);
 
                 adversarialGamesPlayed += adversarialGames;

@@ -1,4 +1,6 @@
-﻿using System;
+﻿//#define VERBOSE_SERIALIZATION
+
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -1076,6 +1078,7 @@ namespace Othello {
         }
 
         private static void WriteComment(StreamWriter writer, int indentLevel, string format, params object[] args) {
+#if VERBOSE_SERIALIZATION
             const string indent = "    ";
             const string comment = "#   ";
 
@@ -1084,11 +1087,14 @@ namespace Othello {
                 writer.Write(indent);
             }
             writer.WriteLine(format, args);
+#endif
         }
 
         public static void WriteHeuristics(string path) {// TODO: take file name instead of writer
+#if VERBOSE_SERIALIZATION
             const string indent = "    ";
             const string comment = "#   ";
+#endif
 
             Console.Write("Saving evaluation parameters...");
             StreamWriter writer = new StreamWriter(path, false);
@@ -1125,7 +1131,9 @@ namespace Othello {
                     for (int j = 0; j < masks.Length; j++) {
                         ulong mask = masks[j];
                         WriteComment(writer, 1, "Pattern {0}", j);
+#if VERBOSE_SERIALIZATION
                         writer.Write(PrintUlong(mask, comment + indent)); // PrintUlong includes its own newline
+#endif
                     }
 
                     List<int> pieceCounts = PatternScores[i].Keys.ToList();

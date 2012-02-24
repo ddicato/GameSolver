@@ -6,30 +6,26 @@ using System.Text;
 
 namespace Solver {
     public class TranspositionTable<T> where T : Node<T> {
-        private readonly Dictionary<T, TableEntry> _dict;
+        private readonly Dictionary<T, TableEntry> _dict = new Dictionary<T, TableEntry>();
         
-        public TranspositionTable() {
-            _dict = new Dictionary<T, TableEntry>();
-        }
-
         private struct TableEntry {
             private readonly int _data;
 
             public int Ply {
                 get {
-                    return (_data & 0x7fffffff) >> 16;
+                    return (this._data & 0x7fffffff) >> 16;
                 }
             }
 
             public int MaxPly {
                 get {
-                    return _data & 0x0000ffff;
+                    return this._data & 0x0000ffff;
                 }
             }
 
             public bool Pending {
                 get {
-                    return (_data & ~0x7fffffff) != 0;
+                    return (this._data & ~0x7fffffff) != 0;
                 }
             }
 
@@ -38,7 +34,7 @@ namespace Solver {
                 Debug.Assert(ply > 0);
                 int data = pending ? ~0x7fffffff : 0x00000000;
                 data |= (ply << 16) | maxPly;
-                _data = data;
+                this._data = data;
             }
         }
 
@@ -53,23 +49,23 @@ namespace Solver {
                 // node is partially searched - override entries that exist lower
                 // in the tree
                 TableEntry entry;
-                if (!_dict.TryGetValue(node, out entry) ||
+                if (!this._dict.TryGetValue(node, out entry) ||
                     (entry.Pending &&
                      (entry.Ply > ply ||
                       entry.Ply == ply && entry.MaxPly < maxPly))) {
-                    lock (_dict) {
-                        _dict[node] = new TableEntry(maxPly, ply, pending);
+                    lock (this._dict) {
+                        this._dict[node] = new TableEntry(maxPly, ply, pending);
                         return true;
                     }
                 }
             } else {
                 // node is proven unsolvable - override any pending entries
                 TableEntry entry;
-                if (!_dict.TryGetValue(node, out entry) ||
+                if (!this._dict.TryGetValue(node, out entry) ||
                     entry.Ply > ply ||
                     entry.Ply == ply && ply == entry.MaxPly && entry.MaxPly < maxPly) {
-                    lock (_dict) {
-                        _dict[node] = new TableEntry(maxPly, ply, pending);
+                    lock (this._dict) {
+                        this._dict[node] = new TableEntry(maxPly, ply, pending);
                         return true;
                     }
                 }
@@ -82,8 +78,8 @@ namespace Solver {
         /// Removes all entries from the transposition table.
         /// </summary>
         public void Clear() {
-            lock (_dict) {
-                _dict.Clear();
+            lock (this._dict) {
+                this._dict.Clear();
             }
         }
 
@@ -92,7 +88,7 @@ namespace Solver {
         /// </summary>
         public int Count {
             get {
-                return _dict.Count;
+                return this._dict.Count;
             }
         }
     }

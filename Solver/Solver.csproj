@@ -72,6 +72,7 @@
     <Compile Include="SinglePlayerSolver.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="TranspositionTable.cs" />
+    <Compile Include="TranspositionTable2.cs" />
   </ItemGroup>
   <ItemGroup>
     <BootstrapperPackage Include="Microsoft.Net.Client.3.5">
