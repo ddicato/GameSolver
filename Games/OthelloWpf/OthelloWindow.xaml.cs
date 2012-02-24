@@ -21,14 +21,14 @@ namespace OthelloWpf {
     // TODO: fix braces
 
     /// <summary>
-    /// Interaction logic for MainWindow.xaml
+    /// Interaction logic for OthelloWindow.xaml
     /// </summary>
-    public partial class MainWindow : Window, Player<OthelloNode> {
+    public partial class OthelloWindow : Window, Player<OthelloNode> {
         private static Brush EmptyPieceBrush = new SolidColorBrush(Colors.Transparent);
         private static Brush BlackPieceBrush = new SolidColorBrush(Colors.Black);
         private static Brush WhitePieceBrush = new SolidColorBrush(Colors.White);
-        private static Brush BlackMoveBrush = new SolidColorBrush(Color.FromArgb(84, 0, 0, 0));
-        private static Brush WhiteMoveBrush = new SolidColorBrush(Color.FromArgb(96, 255, 255, 255));
+        private static Brush BlackMoveBrush = new SolidColorBrush(Color.FromArgb(72, 0, 0, 0));
+        private static Brush WhiteMoveBrush = new SolidColorBrush(Color.FromArgb(84, 255, 255, 255));
 
         private Rectangle[,] squares = new Rectangle[8, 8];
         private Ellipse[,] pieces = new Ellipse[8, 8];
@@ -44,18 +44,18 @@ namespace OthelloWpf {
 
         public const string ParamsPath = "params.txt";
 
-        public MainWindow() {
+        public OthelloWindow() {
             InitializeComponent();
 
             BindingFlags bindingFlags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
             for (int j = 0; j < 8; j++) {
                 for (int i = 0; i < 8; i++) {
-                    this.squares[i, j] = typeof(MainWindow).GetField("Square" + i + j, bindingFlags).GetValue(this) as Rectangle;
-                    this.pieces[i, j] = typeof(MainWindow).GetField("Ellipse" + i + j, bindingFlags).GetValue(this) as Ellipse;
+                    this.squares[i, j] = typeof(OthelloWindow).GetField("Square" + i + j, bindingFlags).GetValue(this) as Rectangle;
+                    this.pieces[i, j] = typeof(OthelloWindow).GetField("Ellipse" + i + j, bindingFlags).GetValue(this) as Ellipse;
                 }
             }
 
-            OthelloNode.ReadHeuristics(ParamsPath);
+            //OthelloNode.ReadHeuristics(ParamsPath);
 
             this.blackPlayer = new AlphaBetaPlayer(5, node => node.PatternScore(), verbose: true, randomness: true);
             this.whitePlayer = new AlphaBetaPlayer(5, OthelloNode.Eval1, verbose: true, randomness: true);
@@ -63,6 +63,34 @@ namespace OthelloWpf {
             //this.blackPlayer = new RandomPlayer();
             //this.whitePlayer= new RandomPlayer();
         }
+
+        #region Dependency Properties
+
+        public static DependencyProperty RandomnessProperty =
+            DependencyProperty.Register("Randomness", typeof(bool), typeof(OthelloWindow));
+
+        public static DependencyProperty TrainingProperty =
+            DependencyProperty.Register("Training", typeof(bool), typeof(OthelloWindow));
+
+        public static DependencyProperty SearchDepthProperty =
+            DependencyProperty.Register("SearchDepth", typeof(int), typeof(OthelloWindow));
+
+        public bool Randomness {
+            get { return (bool)this.GetValue(RandomnessProperty); }
+            set { this.SetValue(RandomnessProperty, value); }
+        }
+
+        public bool Training {
+            get { return (bool)this.GetValue(TrainingProperty); }
+            set { this.SetValue(TrainingProperty, value); }
+        }
+
+        public int SearchDepth {
+            get { return (int)this.GetValue(SearchDepthProperty); }
+            set { this.SetValue(SearchDepthProperty, value); }
+        }
+
+        #endregion
 
         private static int Eval0(OthelloNode node) {
             return 2 * node.PotentialMobilitySpread() - node.FrontierSpread() + 8 * node.CornerSpread();
@@ -84,6 +112,10 @@ namespace OthelloWpf {
 
             this.StartButton.IsEnabled = true;
             this.SwitchButton.IsEnabled = true;
+        }
+
+        private void InitPlayers() {
+
         }
 
         private void GameLoop() {
@@ -238,7 +270,6 @@ namespace OthelloWpf {
             }));
         }
 
-        // TODO: implement Player<OthelloNode> interface
         public int SelectNode(List<OthelloNode> children) {
             if (children == null || children.Count == 0) {
                 // TODO: wait for 'pass' button to get clicked?

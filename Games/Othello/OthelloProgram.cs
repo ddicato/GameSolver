@@ -18,19 +18,17 @@ namespace Othello {
         // TODO: verbosity levels: Board, Turn, Game, GameSet, Output, None
         static void Main(string[] args) {
             const bool verbose = false;
-            const int randomTrainingGames = 100;
-            const int selfTrainingGames = 50;
-            const int adversarialGames = 100;
+            const int randomTrainingGames = 0;
+            const int selfTrainingGames = 66;
+            const int adversarialGames = 50;
             const string outputPath = "params.txt";
 
             Player<OthelloNode> p0;
             Player<OthelloNode> p1;
 
-            int randomGamesPlayed = 0;
             int selfGamesPlayed = 0;
             int adversarialGamesPlayed = 0;
             int depth = 4;
-
             
             while (true) {
                 Console.WriteLine("Enter name of file to load params from (blank to continue): ");
@@ -46,10 +44,11 @@ namespace Othello {
             p1 = new RandomPlayer();
             PlayGames(p0, p1, randomTrainingGames, verbose, training: true);
 
-            randomGamesPlayed += randomTrainingGames;
-            Console.WriteLine("** Played {0} games against random **", randomGamesPlayed);
+            Console.WriteLine("** Played {0} games against random **", randomTrainingGames);
             Console.WriteLine();
-            OthelloNode.WriteHeuristics(outputPath);
+            if (randomTrainingGames > 0) {
+                OthelloNode.WriteHeuristics(outputPath);
+            }
 
             while (true) {
                 p0 = new AlphaBetaPlayer(depth, node => node.PatternScore(), verbose: verbose, randomness: true, exploring: true);

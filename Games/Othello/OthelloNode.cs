@@ -1238,16 +1238,18 @@ namespace Othello {
         }
 
         public static void ReadHeuristics(string path) {
+            StreamReader reader;
             try {
                 if (!File.Exists(path)) {
                     Console.WriteLine("File not found.");
                 }
+
+                Console.Write("Loading evaluation parameters...");
+                reader = new StreamReader(path);
             } catch {
+                Console.WriteLine("I/O Error.");
                 return;
             }
-
-            Console.Write("Loading evaluation parameters...");
-            StreamReader reader = new StreamReader(path);
 
             try {
                 string line = null;
