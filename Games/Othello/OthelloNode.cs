@@ -1171,6 +1171,8 @@ namespace Othello {
 
         #region Deserialization
 
+        private static int HeuristicDataMaxCount = 0;
+
         public static void ClearHeuristics() {
             foreach (Dictionary<int, Dictionary<int, HeuristicData>> dict in FeatureScores) {
                 dict.Clear();
@@ -1225,7 +1227,6 @@ namespace Othello {
             line = line.Substring(match.Length).Trim();
             return true;
         }
-
         private static HeuristicData ParseHeuristicData<T>(string input, Func<string, T> parse, out T key) {
             CheckEOF(input);
             input = input.Trim();
@@ -1238,9 +1239,13 @@ namespace Othello {
             }
 
             key = parse(data[0]);
+            int count = int.Parse(data[2]);
+            if (count > HeuristicDataMaxCount) {
+                HeuristicDataMaxCount = count;
+            }
             return new HeuristicData() {
                 Score = int.Parse(data[1]),
-                Count = int.Parse(data[2]),
+                Count = count,
                 TotalScore = double.Parse(data[3])
             };
         }
@@ -1260,6 +1265,7 @@ namespace Othello {
             }
 
             try {
+                HeuristicDataMaxCount = 0;
                 string line = null;
                 for (int i = 0; i < Features.Length; i++) {
                     EatLine(reader, "Feature", line);
@@ -1342,6 +1348,7 @@ namespace Othello {
                 reader.Close();
             }
 
+            Console.WriteLine("maxCount = {0}", HeuristicDataMaxCount);
             Console.WriteLine("done.");
         }
 

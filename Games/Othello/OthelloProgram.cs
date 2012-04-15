@@ -18,9 +18,12 @@ namespace Othello {
         // TODO: verbosity levels: Board, Turn, Game, GameSet, Output, None
         static void Main(string[] args) {
             const bool verbose = false;
-            const int randomTrainingGames = 0;
-            const int selfTrainingGames = 100;
-            const int adversarialGames = 50;
+            const bool randomTraining = false;
+            const bool selfTraining = false;
+            const bool adversarialTraining = false;
+            const int randomGames = 0;
+            const int selfGames = 0;
+            const int adversarialGames = 100;
             const string outputPath = "params.txt";
 
             Player<OthelloNode> p0;
@@ -29,7 +32,8 @@ namespace Othello {
             int selfGamesPlayed = 0;
             int adversarialGamesPlayed = 0;
             int depth = 2;
-            
+
+            int paramFilesLoaded = 0;
             while (true) {
                 Console.WriteLine("Enter name of file to load params from (blank to continue): ");
                 string path = Console.ReadLine();
@@ -37,37 +41,44 @@ namespace Othello {
                     break;
                 }
                 OthelloNode.ReadHeuristics(path);
+                paramFilesLoaded++;
             }
-            OthelloNode.WriteHeuristics(outputPath);
+            if (paramFilesLoaded > 1) {
+                OthelloNode.WriteHeuristics(outputPath);
+            }
 
             p0 = new MtdFPlayer(depth, node => node.PatternScore(), verbose: verbose, randomness: false);
             p1 = new RandomPlayer();
-            PlayGames(p0, p1, randomTrainingGames, verbose, training: true);
+            PlayGames(p0, p1, randomGames, verbose, training: randomTraining);
 
-            Console.WriteLine("** Played {0} games against random **", randomTrainingGames);
+            Console.WriteLine("** Played {0} games against random **", randomGames);
             Console.WriteLine();
-            if (randomTrainingGames > 0) {
+            if (randomTraining && randomGames > 0) {
                 OthelloNode.WriteHeuristics(outputPath);
             }
 
             while (true) {
                 p0 = new MtdFPlayer(depth, node => node.PatternScore(), verbose: verbose, randomness: true, exploring: true);
                 p1 = new MtdFPlayer(depth, node => node.PatternScore(), verbose: verbose, randomness: true, exploring: true);
-                PlayGames(p0, p1, selfTrainingGames, verbose, training: true);
+                PlayGames(p0, p1, selfGames, verbose, training: selfTraining);
 
-                selfGamesPlayed += selfTrainingGames;
+                selfGamesPlayed += selfGames;
                 Console.WriteLine("** Played {0} games against self **", selfGamesPlayed);
                 Console.WriteLine();
-                OthelloNode.WriteHeuristics(outputPath);
+                if (selfTraining && selfGames > 0) {
+                    OthelloNode.WriteHeuristics(outputPath);
+                }
 
                 p0 = new MtdFPlayer(depth, node => node.PatternScore(), verbose: false, randomness: true, exploring: true);
                 p1 = new MtdFPlayer(depth, OthelloNode.Eval1, verbose: false, randomness: true, exploring: true);
-                PlayGames(p0, p1, adversarialGames, verbose, training: false);
+                PlayGames(p0, p1, adversarialGames, verbose, training: adversarialTraining);
 
                 adversarialGamesPlayed += adversarialGames;
                 Console.WriteLine("** Played {0} games against adversary **", adversarialGamesPlayed);
                 Console.WriteLine();
-                OthelloNode.WriteHeuristics(outputPath);
+                if (adversarialTraining && adversarialGames > 0) {
+                    OthelloNode.WriteHeuristics(outputPath);
+                }
             }
 
             Console.WriteLine("Press Enter to exit.");
