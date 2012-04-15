@@ -68,6 +68,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Node.cs" />
+    <Compile Include="Playbook.cs" />
     <Compile Include="Player.cs" />
     <Compile Include="SinglePlayerSolver.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
