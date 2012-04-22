@@ -61,7 +61,7 @@ namespace Chess {
 
         public override int Turn {
             get { return (int)this.GetData(1u, 20); }
-            private set { this.SetData((uint)value, 1u, 20); }
+            //private set { this.SetData((uint)value, 1u, 20); }
         }
 
         public bool WhiteCastleKing {
@@ -96,90 +96,122 @@ namespace Chess {
 
         #region Move tables
 
-        static ChessNode() {
-            CoordOffset[] WhitePawnMoves = new CoordOffset[] {
-                new CoordOffset(0, 1)
-            };
-            CoordOffset[] WhitePawnDoubleMoves = new CoordOffset[] {
-                new CoordOffset(0, 2)
-            };
-            CoordOffset[] WhitePawnCaptures = new CoordOffset[] {
+        #region Offsets
+
+        private static readonly CoordOffset[] WhitePawnMoves = new CoordOffset[] {
+            new CoordOffset(0, 1)
+        };
+        private static readonly CoordOffset[] WhitePawnDoubleMoves = new CoordOffset[] {
+            new CoordOffset(0, 2)
+        };
+        private static readonly CoordOffset[] WhitePawnCaptures = new CoordOffset[] {
+            new CoordOffset(-1, 1),
+            new CoordOffset(1, 1)
+        };
+        private static readonly CoordOffset[] BlackPawnMoves = new CoordOffset[] {
+            new CoordOffset(0, -1)
+        };
+        private static readonly CoordOffset[] BlackPawnDoubleMoves = new CoordOffset[] {
+            new CoordOffset(0, -1)
+        };
+        private static readonly CoordOffset[] BlackPawnCaptures = new CoordOffset[] {
+            new CoordOffset(-1, -1),
+            new CoordOffset(1, -1)
+        };
+
+        private static readonly CoordOffset[] KnightMoves = new CoordOffset[] {
+            new CoordOffset(-2, 1),
+            new CoordOffset(-1, 2),
+            new CoordOffset(1, 2),
+            new CoordOffset(2, 1),
+            new CoordOffset(2, -1),
+            new CoordOffset(1, -2),
+            new CoordOffset(-1, -2),
+            new CoordOffset(-2, -1)
+        };
+
+        private static readonly CoordOffset[][] Diagonals = new CoordOffset[][] {
+            new CoordOffset[] {
                 new CoordOffset(-1, 1),
-                new CoordOffset(1, 1)
-            };
-            CoordOffset[] BlackPawnMoves = new CoordOffset[] {
-                new CoordOffset(0, -1)
-            };
-            CoordOffset[] BlackPawnDoubleMoves = new CoordOffset[] {
-                new CoordOffset(0, -1)
-            };
-            CoordOffset[] BlackPawnCaptures = new CoordOffset[] {
+                new CoordOffset(-2, 2),
+                new CoordOffset(-3, 3),
+                new CoordOffset(-4, 5),
+                new CoordOffset(-5, 6),
+                new CoordOffset(-6, 6),
+                new CoordOffset(-7, 7)
+            },
+            new CoordOffset[] {
+                new CoordOffset(1, 1),
+                new CoordOffset(2, 2),
+                new CoordOffset(3, 3),
+                new CoordOffset(4, 4),
+                new CoordOffset(5, 5),
+                new CoordOffset(6, 6),
+                new CoordOffset(7, 7),
+            },
+            new CoordOffset[] {
+                new CoordOffset(1, -1),
+                new CoordOffset(2, -2),
+                new CoordOffset(3, -3),
+                new CoordOffset(4, -4),
+                new CoordOffset(5, -5),
+                new CoordOffset(6, -6),
+                new CoordOffset(7, -7),
+            },
+            new CoordOffset[] {
                 new CoordOffset(-1, -1),
-                new CoordOffset(1, -1)
-            };
-
-            CoordOffset[] KnightMoves = new CoordOffset[] {
-                new CoordOffset(-2, 1),
-                new CoordOffset(-1, 2),
-                new CoordOffset(1, 2),
-                new CoordOffset(2, 1),
-                new CoordOffset(2, -1),
-                new CoordOffset(1, -2),
-                new CoordOffset(-1, -2),
-                new CoordOffset(-2, -1)
-            };
-
-            CoordOffset[][] Diagonals = new CoordOffset[][] {
-                new CoordOffset[] {
-                    new CoordOffset(-1, 1),
-                    new CoordOffset(-2, 2),
-                    new CoordOffset(-3, 3),
-                    new CoordOffset(-4, 5),
-                    new CoordOffset(-5, 6),
-                    new CoordOffset(-6, 6),
-                    new CoordOffset(-7, 7)
-                },
-                new CoordOffset[] {
-                    new CoordOffset(1, 1),
-                    new CoordOffset(2, 2),
-                    new CoordOffset(3, 3),
-                    new CoordOffset(4, 4),
-                    new CoordOffset(5, 5),
-                    new CoordOffset(6, 6),
-                    new CoordOffset(7, 7),
-                },
-                new CoordOffset[] {
-                    new CoordOffset(1, -1),
-                    new CoordOffset(2, -2),
-                    new CoordOffset(3, -3),
-                    new CoordOffset(4, -4),
-                    new CoordOffset(5, -5),
-                    new CoordOffset(6, -6),
-                    new CoordOffset(7, -7),
-                },
-                new CoordOffset[] {
-                    new CoordOffset(-1, -1),
-                    new CoordOffset(-2, -2),
-                    new CoordOffset(-3, -3),
-                    new CoordOffset(-4, -4),
-                    new CoordOffset(-5, -5),
-                    new CoordOffset(-6, -6),
-                    new CoordOffset(-7, -7),
-                }
-            };
-        }
-
-
-
-        private static readonly uint[] PawnMoves;
-
-        private struct MoveTable {
-            private readonly uint[] Moves;
-            
-            public MoveTable() {
-                this.Moves = new uint[64];
+                new CoordOffset(-2, -2),
+                new CoordOffset(-3, -3),
+                new CoordOffset(-4, -4),
+                new CoordOffset(-5, -5),
+                new CoordOffset(-6, -6),
+                new CoordOffset(-7, -7),
             }
-        }
+        };
+
+        private static readonly CoordOffset[][] Files = new CoordOffset[][] {
+            new CoordOffset[] {
+                new CoordOffset(1, 0),
+                new CoordOffset(2, 0),
+                new CoordOffset(3, 0),
+                new CoordOffset(4, 0),
+                new CoordOffset(5, 0),
+                new CoordOffset(6, 0),
+                new CoordOffset(7, 0)
+            },
+            new CoordOffset[] {
+                new CoordOffset(-1, 0),
+                new CoordOffset(-2, 0),
+                new CoordOffset(-3, 0),
+                new CoordOffset(-4, 0),
+                new CoordOffset(-5, 0),
+                new CoordOffset(-6, 0),
+                new CoordOffset(-7, 0)
+            }
+        };
+
+        private static readonly CoordOffset[][] Ranks = new CoordOffset[][] {
+            new CoordOffset[] {
+                new CoordOffset(0, 1),
+                new CoordOffset(0, 2),
+                new CoordOffset(0, 3),
+                new CoordOffset(0, 4),
+                new CoordOffset(0, 5),
+                new CoordOffset(0, 6),
+                new CoordOffset(0, 7)
+            },
+            new CoordOffset[] {
+                new CoordOffset(0, -1),
+                new CoordOffset(0, -2),
+                new CoordOffset(0, -3),
+                new CoordOffset(0, -4),
+                new CoordOffset(0, -5),
+                new CoordOffset(0, -6),
+                new CoordOffset(0, -7)
+            }
+        };
+
+        #endregion
 
         #endregion
 
@@ -226,14 +258,11 @@ namespace Chess {
         }
 
         public struct Coord {
-            public static Coord InvalidCoord = new Coord();
+            public static Coord InvalidCoord = new Coord() {
+                Loc = unchecked((uint)-1)
+            };
 
             public uint Loc;
-
-            // constructor that creates an invalid coordinate
-            private Coord() {
-                this.Loc = unchecked((uint)-1);
-            }
 
             public Coord(uint loc) {
                 Debug.Assert(loc < 64);

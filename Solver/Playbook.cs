@@ -14,7 +14,7 @@ namespace Solver {
     public class PlaybookEntry<T> {
         public List<PlaybookEntry<T>> parents;
 
-        // Paired with the transformation that makes
+        // Paired with the transformation that makes the match valid.
         private List<KeyValuePair<PlaybookEntry<T>, int>> children;
 
         public Playbook<T> Playbook {

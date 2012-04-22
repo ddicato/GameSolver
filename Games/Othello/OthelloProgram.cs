@@ -18,11 +18,11 @@ namespace Othello {
         // TODO: verbosity levels: Board, Turn, Game, GameSet, Output, None
         static void Main(string[] args) {
             const bool verbose = false;
-            const bool randomTraining = false;
-            const bool selfTraining = false;
-            const bool adversarialTraining = false;
-            const int randomGames = 0;
-            const int selfGames = 0;
+            const TrainingMode randomTraining = TrainingMode.LossDraw;
+            const TrainingMode selfTraining = TrainingMode.All;
+            const TrainingMode adversarialTraining = TrainingMode.All; // TODO: evaluate relative strength and adjust training mode accordingly
+            const int randomGames = 100;
+            const int selfGames = 50;
             const int adversarialGames = 100;
             const string outputPath = "params.txt";
 
@@ -31,7 +31,7 @@ namespace Othello {
 
             int selfGamesPlayed = 0;
             int adversarialGamesPlayed = 0;
-            int depth = 2;
+            int depth = 1;
 
             int paramFilesLoaded = 0;
             while (true) {
@@ -47,15 +47,17 @@ namespace Othello {
                 OthelloNode.WriteHeuristics(outputPath);
             }
 
-            p0 = new MtdFPlayer(depth, node => node.PatternScore(), verbose: verbose, randomness: false);
-            p1 = new RandomPlayer();
-            PlayGames(p0, p1, randomGames, verbose, training: randomTraining);
+            do {
+                p0 = new MtdFPlayer(depth, node => node.PatternScore(), verbose: verbose, randomness: false);
+                p1 = new RandomPlayer();
+                PlayGames(p0, p1, randomGames, verbose, training: randomTraining, p1Name: "RandomPlayer");
 
-            Console.WriteLine("** Played {0} games against random **", randomGames);
-            Console.WriteLine();
-            if (randomTraining && randomGames > 0) {
-                OthelloNode.WriteHeuristics(outputPath);
-            }
+                Console.WriteLine("** Played {0} games against random **", randomGames);
+                Console.WriteLine();
+                if (randomTraining != TrainingMode.None && randomGames > 0) {
+                    OthelloNode.WriteHeuristics(outputPath);
+                }
+            } while (randomGames > 0 && selfGames <= 0 && adversarialGames <= 0);
 
             while (true) {
                 p0 = new MtdFPlayer(depth, node => node.PatternScore(), verbose: verbose, randomness: true, exploring: true);
@@ -65,18 +67,18 @@ namespace Othello {
                 selfGamesPlayed += selfGames;
                 Console.WriteLine("** Played {0} games against self **", selfGamesPlayed);
                 Console.WriteLine();
-                if (selfTraining && selfGames > 0) {
+                if (selfTraining != TrainingMode.None && selfGames > 0) {
                     OthelloNode.WriteHeuristics(outputPath);
                 }
 
                 p0 = new MtdFPlayer(depth, node => node.PatternScore(), verbose: false, randomness: true, exploring: true);
-                p1 = new MtdFPlayer(depth, OthelloNode.Eval1, verbose: false, randomness: true, exploring: true);
-                PlayGames(p0, p1, adversarialGames, verbose, training: adversarialTraining);
+                p1 = new MtdFPlayer(depth + 1, OthelloNode.Eval1, verbose: false, randomness: true, exploring: true);
+                PlayGames(p0, p1, adversarialGames, verbose, training: adversarialTraining, p1Name: "Adversary+");
 
                 adversarialGamesPlayed += adversarialGames;
                 Console.WriteLine("** Played {0} games against adversary **", adversarialGamesPlayed);
                 Console.WriteLine();
-                if (adversarialTraining && adversarialGames > 0) {
+                if (adversarialTraining != TrainingMode.None && adversarialGames > 0) {
                     OthelloNode.WriteHeuristics(outputPath);
                 }
             }
@@ -85,14 +87,17 @@ namespace Othello {
             Console.ReadLine();
         }
 
-        // TODO: Parallelize this. We're wasting cycles.
+        // TODO: Parallelize this. We're wasting cycles. Or, remove the threads param.
         private static void PlayGames(
             Player<OthelloNode> p0,
             Player<OthelloNode> p1,
             int games = 2,
             bool verbose = false,
-            bool training = true,
-            string outputLog = null) {
+            TrainingMode training = TrainingMode.All, // evaluated from p0's perspective
+            string p0Name = null,
+            string p1Name = null,
+            string outputLog = null,
+            int threads = 0) {
             const double emaFactor = 0.97;
 
             int totalScore = 0;
@@ -101,6 +106,12 @@ namespace Othello {
             double p0WinsEma = 0.5;
             double p1WinsEma = 0.5;
             double scoreEma = 0.0;
+
+            p0Name = p0Name ?? "Player 1";
+            p1Name = p1Name ?? "Player 2";
+            if (threads < 1) {
+                threads = Environment.ProcessorCount;
+            }
 
             StreamWriter writer = null;
             if (outputLog != null) {
@@ -119,17 +130,21 @@ namespace Othello {
                 int result;
                 List<OthelloNode> gameHistory = new List<OthelloNode>();
                 if ((i & 1) == 0) {
-                    result = GameLoop(p0, "Player 1", p1, "Player 2", gameHistory, verbose, training);
-                    if (training) {
-                        OthelloNode.Train(gameHistory, result, includeSymmetries: true);
+                    result = GameLoop(p0, p0Name, p1, p1Name, gameHistory, verbose, training);
+                    if (result > 0 && (training & TrainingMode.Win) != TrainingMode.None ||
+                        result < 0 && (training & TrainingMode.Loss) != TrainingMode.None ||
+                        result == 0 && (training & TrainingMode.Draw) != TrainingMode.None) {
+                        OthelloNode.Train(gameHistory, result);
                     }
                 } else {
-                    result = GameLoop(p1, "Player 2", p0, "Player 1", gameHistory, verbose, training);
-                    if (training) {
-                        OthelloNode.Train(gameHistory, result, includeSymmetries: true);
+                    result = GameLoop(p1, p1Name, p0, p0Name, gameHistory, verbose, training);
+                    if (result > 0 && (training & TrainingMode.Loss) != TrainingMode.None ||
+                        result < 0 && (training & TrainingMode.Win) != TrainingMode.None ||
+                        result == 0 && (training & TrainingMode.Draw) != TrainingMode.None) {
+                        OthelloNode.Train(gameHistory, result);
                     }
 
-                    // We want the result from p0's point of view.
+                    // We want to display the result from p0's point of view.
                     result = -result;
                 }
 
@@ -149,10 +164,12 @@ namespace Othello {
                 }
 
                 Console.WriteLine(
-                    "Player 1 wins: {0:00.00}% Player 2 wins: {1:00.00}% Average score: {2:+0.000;-0.000}",
+                    "{3} wins: {0:00.00}% {4} wins: {1:00.00}% Average score: {2:+0.000;-0.000}",
                     100.0 * p0Wins / (i + 1),
                     100.0 * p1Wins / (i + 1),
-                    (double)totalScore / (i + 1));
+                    (double)totalScore / (i + 1),
+                    p0Name,
+                    p1Name);
                 Console.WriteLine(
                     "Exponential moving averages: {0:00.00}% to {1:00.00}% with score {2:+0.000;-0.000}",
                     100.0 * p0WinsEma,
@@ -176,11 +193,20 @@ namespace Othello {
             }
 
             Console.WriteLine(
-                "Out of {0} games: {1} Player 1 win(s), {2} Player 2 win(s), and {3} draw(s).",
+                "Out of {0} games: {1} {4} win(s), {2} {5} win(s), and {3} draw(s).",
                 games,
                 p0Wins,
                 p1Wins,
-                games - p0Wins - p1Wins);
+                games - p0Wins - p1Wins,
+                p0Name,
+                p1Name);
+            Console.WriteLine();
+
+            if (training != TrainingMode.None) {
+                Console.Write("Recalculating feature weights... ");
+                OthelloNode.CalculateWeights();
+                Console.WriteLine("done.");
+            }
             Console.WriteLine();
         }
 
@@ -191,9 +217,9 @@ namespace Othello {
             string whiteName,
             List<OthelloNode> gameHistory,
             bool verbose = false,
-            bool training = true) {
+            TrainingMode training = TrainingMode.All) {
             if (gameHistory == null) {
-                training = false;
+                training = TrainingMode.None;
             } else {
                 gameHistory.Clear();
             }
@@ -229,7 +255,7 @@ namespace Othello {
                 }
 
                 board = children[index];
-                if (training) {
+                if (training != TrainingMode.None) {
                     gameHistory.Add(board);
                 }
             }
@@ -243,6 +269,20 @@ namespace Othello {
             return board.Score;
         }
 
+        [Flags]
+        private enum TrainingMode {
+            None = 0,
+            Loss = 1,
+            Draw = 2,
+            Win = 4,
+
+            WinLoss = Win | Loss,
+            WinDraw = Win | Draw,
+            LossDraw = Loss | Draw,
+
+            All = Win | Loss | Draw
+        }
+
         #region Test Code
 
         private static void RunTests() {
@@ -251,6 +291,9 @@ namespace Othello {
             PrintPatterns();
             PrintInitialBoard();
             PrintInitialChildren();
+            PrintRandomGame(); // run before loading params.txt
+            PrintWeights(); // loads params.txt
+            PrintRandomGame(); // run after loading params.txt
             PerftTest();
         }
 
@@ -425,6 +468,64 @@ namespace Othello {
             Console.WriteLine("Displaying board symmetries:");
             foreach (OthelloNode permutation in OthelloNode.GetSymmetries(node)) {
                 Console.WriteLine(permutation);
+            }
+        }
+
+        private static void PrintWeights() {
+            OthelloNode.ReadHeuristics("params.txt");
+            OthelloNode.PrintWeights();
+        }
+
+        private static void PrintRandomGame() {
+            const int groupSize = 6;
+            Random random = new Random(12345);
+            List<OthelloNode> history = new List<OthelloNode>();
+
+            OthelloNode node = new OthelloNode();
+            while (!node.IsGameOver) {
+                history.Add(node);
+                List<OthelloNode> children = node.GetChildren();
+                if (children == null || children.Count == 0) {
+                    Console.WriteLine("Error: node.IsGameOver is false but GetChildren returns no children.");
+                    Console.WriteLine(node);
+                }
+
+                node = children[random.Next(children.Count)];
+            }
+
+            Console.WriteLine("Random game history:");
+            Console.WriteLine(OthelloNode.PrintNodes(groupSize, true, history.ToArray()));
+
+            Console.WriteLine("Pattern scores:");
+            PrintScoreHistory(groupSize, board => board.PatternScore(), history);
+
+            Console.WriteLine("Pattern Scores (reference):");
+            PrintScoreHistory(groupSize, board => board.PatternScoreSlow(), history);
+
+            Console.WriteLine("Pattern Score percentages:");
+            PrintScoreHistory(
+                groupSize,
+                board => (int)Math.Round(board.PatternScoreSlow() * 100.0 / board.PatternScore()),
+                history);
+
+            Console.WriteLine("Feature scores:");
+            PrintScoreHistory(groupSize, board => board.FeatureScore(), history);
+
+            Console.WriteLine("Eval1 scores:");
+            PrintScoreHistory(groupSize, OthelloNode.Eval1, history);
+        }
+
+        private static void PrintScoreHistory(int groupSize, Func<OthelloNode, int> getScore, IList<OthelloNode> history) {
+            groupSize = Math.Max(1, groupSize);
+
+            for (int i = 0; i < history.Count; i++) {
+                Console.Write("{0} \t", getScore(history[i]));
+                if ((i % groupSize) == groupSize - 1) {
+                    Console.WriteLine();
+                }
+            }
+            if ((history.Count % groupSize) != 0) {
+                Console.WriteLine();
             }
         }
 

@@ -104,6 +104,8 @@ namespace Othello {
         public const ulong Corners = (1ul << 63) | (1ul << 56) | (1ul << 7) | 1ul;
 
         static OthelloNode() {
+            #region Initialize basic masks
+
             Square = new ulong[8, 8];
             for (int i = 0; i < 8; i++) {
                 for (int j = 0; j < 8; j++) {
@@ -143,6 +145,10 @@ namespace Othello {
                     Adjacent[i, j] = value;
                 }
             }
+
+            #endregion
+
+            #region Initialize patern masks
 
             Row = new ulong[6];
             Column = new ulong[6];
@@ -210,7 +216,18 @@ namespace Othello {
                 }
             }
 
-            PatternSets = new ulong[][] {
+            #endregion
+
+            // TODO: Get rid of additionalPatterns hard-code just a few pattern classes here.
+            ulong[] additionalPatterns = new ulong[] { };
+
+            // TODO: update comment
+            // Store non-overlapping groups of patterns. Used for fast board evaluation.
+            // TODO: flaw: Scores for pattern valuations witnh zeros are shared among patterns. So
+            //       if one of the ulongs we use for lookup is 0, we can't tell which pattern we're
+            //       looking up a score for, which also conflates these patterns during training.
+            //\\//PatternSets = new ulong[][] {
+            ulong[][] patternSets = new ulong[][] {
                 Row,
                 Column,
                 HorizEdge,
@@ -219,10 +236,69 @@ namespace Othello {
                 DownRight,
                 Corner33,
                 Corner52Cw,
-                Corner52Ccw
+                Corner52Ccw,
+                additionalPatterns
             };
 
-            PatternScores = new Dictionary<int, Dictionary<ulong, Dictionary<ulong, HeuristicData>>>[PatternSets.Length];
+            // Store classes of patterns that are equal modulo board symmetries. Used for training
+            // and serialization.
+            List<ulong> patternClassGenerators = new List<ulong>();
+            foreach (ulong[] patternSet in patternSets) {
+                foreach (ulong pattern in patternSet) {
+                    bool found = false;
+                    foreach (ulong sym in GetSymmetries(pattern)) {
+                        if (patternClassGenerators.Contains(sym)) {
+                            found = true;
+                            break;
+                        }
+                    }
+
+                    if (!found) {
+                        patternClassGenerators.Add(pattern);
+                    }
+                }
+            }
+            //\\//PatternClassGenerators = patternClassGenerators.ToArray();
+
+            PatternClasses = new ulong[patternClassGenerators.Count][];
+            for (int i = 0; i < PatternClasses.Length; i++) {
+                List<ulong> patternClass = new List<ulong>(8);
+                foreach (ulong sym in GetSymmetries(patternClassGenerators[i])) {
+                    if (!patternClass.Contains(sym)) {
+                        patternClass.Add(sym);
+                    }
+                }
+
+                PatternClasses[i] = patternClass.ToArray();
+            }
+
+            PatternClassScores = new Dictionary<int, Dictionary<ulong, Dictionary<ulong, HeuristicData>>>[PatternClasses.Length];
+            for (int i = 0; i < PatternClassScores.Length; i++) {
+                PatternClassScores[i] = new Dictionary<int, Dictionary<ulong, Dictionary<ulong, HeuristicData>>>();
+            }
+            PatternClassWeights = new double[PatternClasses.Length, 65];
+
+            // Store all the pattern masks and associated scores. Used for fast board evaluation.
+            List<ulong> patterns = new List<ulong>();
+            List<int> patternClassIndices = new List<int>();
+            List<int> patternTransformIndices = new List<int>();
+            for (int i = 0; i < PatternClasses.Length; i++) {
+                foreach (ulong pattern in PatternClasses[i]) {
+                    int transformIndex;
+                    if (!IsIsomorphic(PatternClasses[i][0], pattern, out transformIndex)) {
+                        throw new InvalidDataException();
+                    }
+
+                    patterns.Add(pattern);
+                    patternClassIndices.Add(i);
+                    patternTransformIndices.Add(transformIndex);
+                }
+            }
+            Patterns = patterns.ToArray();
+            PatternClassIndices = patternClassIndices.ToArray();
+            PatternTransformIndices = patternTransformIndices.ToArray();
+
+            PatternScores = new Dictionary<int, Dictionary<ulong, Dictionary<ulong, HeuristicData>>>[Patterns.Length];
             for (int i = 0; i < PatternScores.Length; i++) {
                 PatternScores[i] = new Dictionary<int, Dictionary<ulong, Dictionary<ulong, HeuristicData>>>();
             }
@@ -249,6 +325,9 @@ namespace Othello {
             for (int i = 0; i < Features.Length; i++) {
                 FeatureScores[i] = new Dictionary<int, Dictionary<int, HeuristicData>>();
             }
+
+            // Initialize all the pattern and feature weights to 1, calculating Patterns and PatternScores accordingly.
+            InitializeWeights();
         }
 
         private static ulong GenerateDownLeftAt(int iStart, int jStart) {
@@ -269,22 +348,114 @@ namespace Othello {
             return result;
         }
 
+        // TODO: Remove PatternClassWeights and encode weight via HeuristicData's score
+        private static void InitializeWeights() {
+            for (int i = 0; i < PatternClasses.Length; i++) {
+                for (int pieceCount = 0; pieceCount < 65; pieceCount++) {
+                    PatternClassWeights[i, pieceCount] = 1.0;
+                }
+            }
+
+            // Recalculate the pattern scores to incorporate the new weights.
+            CalculatePatternScores();
+        }
+
+        private static void CalculatePatternScores() {
+            for (int i = 0; i < Patterns.Length; i++) {
+                int patternClass = PatternClassIndices[i];
+                Dictionary<int, Dictionary<ulong, Dictionary<ulong, HeuristicData>>> source = PatternClassScores[patternClass];
+                Dictionary<int, Dictionary<ulong, Dictionary<ulong, HeuristicData>>> dest = PatternScores[i];
+                Func<ulong, ulong> transform = Transforms[PatternTransformIndices[i]];
+
+                dest.Clear();
+                foreach (int pieceCount in source.Keys) {
+                    Dictionary<ulong, Dictionary<ulong, HeuristicData>> midSource = source[pieceCount];
+                    Dictionary<ulong, Dictionary<ulong, HeuristicData>> midDest = new Dictionary<ulong, Dictionary<ulong, HeuristicData>>();
+                    dest[pieceCount] = midDest;
+
+                    // Because our board evaluator adds one score for each pattern in the class, we must divide
+                    // by the cardinality of the class in order to un-bias the weights.
+                    double weight = PatternClassWeights[patternClass, pieceCount] / PatternClasses[patternClass].Length;
+
+                    foreach (ulong self in midSource.Keys) {
+                        Dictionary<ulong, HeuristicData> innerSource = midSource[self];
+                        Dictionary<ulong, HeuristicData> innerDest = new Dictionary<ulong, HeuristicData>();
+                        midDest[transform(self)] = innerDest;
+
+                        foreach (ulong other in innerSource.Keys) {
+                            HeuristicData data = innerSource[other];
+                            data.Score = (int)Math.Round(data.CalculateScore() * weight);
+                            innerDest[transform(other)] = data;
+                        }
+                    }
+                }
+            }
+
+            GC.Collect();
+        }
+
         #endregion
 
         #region Board Transforms
 
-        public static IEnumerable<OthelloNode> GetSymmetries(OthelloNode node) {
-            yield return node;
-            yield return new OthelloNode(node.Turn, RotateRight(node.PlayerBoard), RotateRight(node.OtherBoard), node.Pass);
-            yield return new OthelloNode(node.Turn, Rotate180(node.PlayerBoard), Rotate180(node.OtherBoard), node.Pass);
-            yield return new OthelloNode(node.Turn, RotateLeft(node.PlayerBoard), RotateLeft(node.OtherBoard), node.Pass);
-            yield return new OthelloNode(node.Turn, FlipHoriz(node.PlayerBoard), FlipHoriz(node.OtherBoard), node.Pass);
-            yield return new OthelloNode(node.Turn, FlipVert(node.PlayerBoard), FlipVert(node.OtherBoard), node.Pass);
-            yield return new OthelloNode(node.Turn, FlipDiag0(node.PlayerBoard), FlipDiag0(node.OtherBoard), node.Pass);
-            yield return new OthelloNode(node.Turn, FlipDiag1(node.PlayerBoard), FlipDiag1(node.OtherBoard), node.Pass);
+        //\\// TODO: replace '8' with Transforms.Length
+        public static readonly Func<ulong, ulong>[] Transforms = new Func<ulong, ulong>[] {
+            x => x,
+            RotateRight,
+            Rotate180,
+            RotateLeft,
+            FlipHoriz,
+            FlipVert,
+            FlipDiag0,
+            FlipDiag1
+        };
+
+        public static readonly Func<ulong, ulong>[] InverseTransforms = new Func<ulong, ulong>[] {
+            x => x,
+            RotateLeft,
+            Rotate180,
+            RotateRight,
+            FlipHoriz,
+            FlipVert,
+            FlipDiag0,
+            FlipDiag1
+        };
+
+        public static IEnumerable<ulong> GetSymmetries(ulong board) {
+            foreach (Func<ulong, ulong> transform in Transforms) {
+                yield return transform(board);
+            }
         }
 
-        public static ulong RotateRight(ulong board) {
+        public static IEnumerable<KeyValuePair<ulong, ulong>> GetSymmetries(ulong selfBoard, ulong otherBoard) {
+            foreach (Func<ulong, ulong> transform in Transforms) {
+                yield return new KeyValuePair<ulong, ulong>(transform(selfBoard), transform(otherBoard));
+            }
+        }
+
+        public static IEnumerable<OthelloNode> GetSymmetries(OthelloNode node) {
+            foreach (Func<ulong, ulong> transform in Transforms) {
+                yield return new OthelloNode(
+                    node.Turn,
+                    transform(node.PlayerBoard),
+                    transform(node.OtherBoard),
+                    node.Pass);
+            }
+        }
+
+        public static bool IsIsomorphic(ulong self, ulong other, out int transformIndex) {
+            for (int i = 0; i < Transforms.Length; i++) {
+                if (Transforms[i](self) == other) {
+                    transformIndex = i;
+                    return true;
+                }
+            }
+
+            transformIndex = 0;
+            return false;
+        }
+
+        private static ulong RotateRight(ulong board) {
             ulong result = 0ul;
             for (int i = 0; i < 8; i++) {
                 for (int j = 0; j < 8; j++) {
@@ -296,7 +467,7 @@ namespace Othello {
             return result;
         }
 
-        public static ulong RotateLeft(ulong board) {
+        private static ulong RotateLeft(ulong board) {
             ulong result = 0ul;
             for (int i = 0; i < 8; i++) {
                 for (int j = 0; j < 8; j++) {
@@ -308,7 +479,7 @@ namespace Othello {
             return result;
         }
 
-        public static ulong Rotate180(ulong board) {
+        private static ulong Rotate180(ulong board) {
             ulong result = 0ul;
             for (int i = 0; i < 8; i++) {
                 for (int j = 0; j < 8; j++) {
@@ -320,7 +491,7 @@ namespace Othello {
             return result;
         }
 
-        public static ulong FlipHoriz(ulong board) {
+        private static ulong FlipHoriz(ulong board) {
             ulong result = 0ul;
             for (int i = 0; i < 8; i++) {
                 for (int j = 0; j < 8; j++) {
@@ -332,7 +503,7 @@ namespace Othello {
             return result;
         }
 
-        public static ulong FlipVert(ulong board) {
+        private static ulong FlipVert(ulong board) {
             ulong result = 0ul;
             for (int i = 0; i < 8; i++) {
                 for (int j = 0; j < 8; j++) {
@@ -344,7 +515,7 @@ namespace Othello {
             return result;
         }
 
-        public static ulong FlipDiag0(ulong board) {
+        private static ulong FlipDiag0(ulong board) {
             ulong result = 0ul;
             for (int i = 0; i < 8; i++) {
                 for (int j = 0; j < 8; j++) {
@@ -356,7 +527,7 @@ namespace Othello {
             return result;
         }
 
-        public static ulong FlipDiag1(ulong board) {
+        private static ulong FlipDiag1(ulong board) {
             ulong result = 0ul;
             for (int i = 0; i < 8; i++) {
                 for (int j = 0; j < 8; j++) {
@@ -863,39 +1034,116 @@ namespace Othello {
         public static readonly ulong[] Corner52Cw;
         public static readonly ulong[] Corner52Ccw;
 
-        private static readonly ulong[][] PatternSets;
+        // TODO: rename these? (also Patterns and PatternScores). Search for "PatternSets" and "pattern sets" and delete.
+        private static readonly ulong[][] PatternClasses;
+        private static readonly Dictionary<int, Dictionary<ulong, Dictionary<ulong, HeuristicData>>>[] PatternClassScores;
+        private static readonly double[,] PatternClassWeights;
 
+        private static readonly ulong[] Patterns;
         private static readonly Dictionary<int, Dictionary<ulong, Dictionary<ulong, HeuristicData>>>[] PatternScores;
 
+        // Information for mapping between Patterns and PatternClasses
+        private static readonly int[] PatternClassIndices;
+        private static readonly int[] PatternTransformIndices;
+
+        // Additional features
         public static readonly Func<OthelloNode, int>[] Features;
         public static readonly string[] FeatureNames;
         private static readonly Dictionary<int, Dictionary<int, HeuristicData>>[] FeatureScores;
+        // TODO: add feature weights
+        // TODO: abstract pattern-eval score as a feature? unify with pattern eval features?
 
         private struct HeuristicData {
             public int Score;
-            public int Count;
+            public uint Count;
+            public uint WinCount;
+            public uint LossCount;
+            public double TotalWinScore;
+            public double TotalLossScore;
             public double TotalScore;
 
             public HeuristicData(int score) {
-                this.Score = score;
-                this.Count = 1;
-                this.TotalScore = (double)score;
+                this.Count = 1u;
+
+                this.WinCount = this.LossCount = 0u;
+                this.TotalWinScore = this.TotalLossScore = 0.0;
+                if (score > 0) {
+                    this.WinCount = 1u;
+                    this.TotalWinScore = score;
+                } else if (score < 0) {
+                    this.LossCount = 1u;
+                    this.TotalLossScore = score;
+                }
+                
+                this.TotalScore = score;
+
+                this.Score = 0;
+                this.Score = this.CalculateScore();
             }
 
             public HeuristicData(HeuristicData data, int newScore) {
                 this.Count = data.Count + 1;
+
+                this.WinCount = data.WinCount;
+                this.LossCount = data.LossCount;
+                this.TotalWinScore = data.TotalWinScore;
+                this.TotalLossScore = data.TotalLossScore;
+                if (newScore > 0) {
+                    this.WinCount += 1u;
+                    this.TotalWinScore += newScore;
+                } else if (newScore < 0) {
+                    this.LossCount += 1u;
+                    this.TotalLossScore += 1u;
+                }
+
                 this.TotalScore = data.TotalScore + newScore;
-                this.Score = (int)(this.TotalScore / this.Count);
+
+                this.Score = 0;
+                this.Score = this.CalculateScore();
             }
 
             public HeuristicData(HeuristicData a, HeuristicData b) {
                 this.Count = a.Count + b.Count;
+                this.WinCount = a.WinCount + b.WinCount;
+                this.LossCount = a.LossCount + b.LossCount;
+                this.TotalWinScore = a.TotalWinScore + b.TotalWinScore;
+                this.TotalLossScore = a.TotalLossScore + b.TotalLossScore;
                 this.TotalScore = a.TotalScore + b.TotalScore;
-                this.Score = (int)(this.TotalScore / this.Count);
+
+                this.Score = 0;
+                this.Score = this.CalculateScore();
+            }
+
+            public int CalculateScore() {
+                //\\// TODO: replace with winning probability?
+                return (int)Math.Round(this.TotalScore / this.Count);
+            }
+
+            public static double Sigmoid(double x) {
+                return x / (1.0 + Math.Abs(x));
+            }
+
+            public double Confidence {
+                get {
+                    // TODO: Take a more general measure and multiply my Sigmoid(this.Score / ScoreMultiplier)?
+                    //       That would also correct the sign.
+
+                    double winSpread = (double)this.WinCount - (double)this.LossCount;
+                    double nonDrawCount = (double)this.WinCount + (double)this.LossCount;
+                    if (this.Score > 0) {
+                        return Sigmoid(winSpread) * Sigmoid(nonDrawCount + 1.0);
+                    } else if (this.Score < 0) {
+                        return Sigmoid(-winSpread) * Sigmoid(nonDrawCount + 1.0);
+                    } else {
+                        double drawCount = (double)this.Count - nonDrawCount;
+                        return Sigmoid(drawCount) * Sigmoid(this.Count + 1.0);
+                    }
+                }
             }
         }
 
-        public int HeuristicScore() {
+        //\\//
+        /*public int HeuristicScore() {
             ulong self = this.PlayerBoard;
             ulong other = this.OtherBoard;
             int pieceCount = BitCount(this.Occupied);
@@ -924,7 +1172,7 @@ namespace Othello {
             }
 
             return result;
-        }
+        }*/
 
         public int PatternScore() {
             ulong self = this.PlayerBoard;
@@ -932,20 +1180,40 @@ namespace Othello {
             int pieceCount = BitCount(this.Occupied);
             int result = 0;
 
-            for (int i = 0; i < PatternSets.Length; i++) {
-                foreach (ulong mask in PatternSets[i]) {
-                    Dictionary<ulong, Dictionary<ulong, HeuristicData>> mid;
-                    Dictionary<ulong, HeuristicData> inner;
-                    HeuristicData data;
-                    if (PatternScores[i].TryGetValue(pieceCount, out mid) &&
-                        mid.TryGetValue(self & mask, out inner) &&
-                        inner.TryGetValue(other & mask, out data)) {
-                        result += data.Score;
-                    }
+            for (int i = 0; i < Patterns.Length; i++) {
+                ulong mask = Patterns[i];
+                Dictionary<ulong, Dictionary<ulong, HeuristicData>> mid;
+                Dictionary<ulong, HeuristicData> inner;
+                HeuristicData data;
+                if (PatternScores[i].TryGetValue(pieceCount, out mid) &&
+                    mid.TryGetValue(self & mask, out inner) &&
+                    inner.TryGetValue(other & mask, out data)) {
+                    result += data.Score;
                 }
             }
 
             return result;
+        }
+
+        public int PatternScoreSlow() {
+            int pieceCount = BitCount(this.Occupied);
+            double result = 0.0;
+
+            foreach (KeyValuePair<ulong, ulong> kvp in GetSymmetries(this.PlayerBoard, this.OtherBoard)) {
+                for (int i = 0; i < PatternClasses.Length; i++) {
+                    ulong mask = PatternClasses[i][0];
+                    Dictionary<ulong, Dictionary<ulong, HeuristicData>> mid;
+                    Dictionary<ulong, HeuristicData> inner;
+                    HeuristicData data;
+                    if (PatternClassScores[i].TryGetValue(pieceCount, out mid) &&
+                        mid.TryGetValue(kvp.Key & mask, out inner) &&
+                        inner.TryGetValue(kvp.Value & mask, out data)) {
+                        result += data.Score * PatternClassWeights[i, pieceCount] / Transforms.Length;
+                    }
+                }
+            }
+
+            return (int)Math.Round(result);
         }
 
         public int FeatureScore() {
@@ -964,7 +1232,8 @@ namespace Othello {
             return result;
         }
 
-        public int UnknownPatterns() {
+        //\\//
+        /*public int UnknownPatterns() {
             ulong self = this.PlayerBoard;
             ulong other = this.OtherBoard;
             int pieceCount = BitCount(this.Occupied);
@@ -977,6 +1246,27 @@ namespace Othello {
                     if (!PatternScores[i].TryGetValue(pieceCount, out mid) ||
                         !mid.TryGetValue(self & mask, out inner) ||
                         !inner.ContainsKey(other & mask)) {
+                        result++;
+                    }
+                }
+            }
+
+            return result;
+        }*/
+
+        public int UnknownPatterns() {
+            int pieceCount = BitCount(this.Occupied);
+            int result = 0;
+
+            foreach (KeyValuePair<ulong, ulong> kvp in GetSymmetries(this.PlayerBoard, this.OtherBoard)) {
+                for (int i = 0; i < PatternClasses.Length; i++) {
+                    ulong mask = PatternClasses[i][0];
+
+                    Dictionary<ulong, Dictionary<ulong, HeuristicData>> mid;
+                    Dictionary<ulong, HeuristicData> inner;
+                    if (!PatternClassScores[i].TryGetValue(pieceCount, out mid) ||
+                        !mid.TryGetValue(kvp.Key & mask, out inner) ||
+                        !inner.ContainsKey(kvp.Value & mask)) {
                         result++;
                     }
                 }
@@ -1004,49 +1294,45 @@ namespace Othello {
 
         #region Learning
 
+        // Score will be stored as an int, so we multiply to get more significant digits.
+        private const int ScoreMultipllier = 10000; // TODO: serialize this so it is changeable
+
         // finalScore is black's piece count minus white's
-        public static void Train(List<OthelloNode> gameHistory, int finalScore, bool includeSymmetries = true) {
+        public static void Train(List<OthelloNode> gameHistory, int finalScore) {
             // TODO: interpolate between turns when averaging. For features, also interpolate between feature values
             // TODO: more and better learning algorithms: Gradient descent, Temporal-difference
-            // Score will be stored as an int, so we multiply to get more significant digits.
-            finalScore *= 1000;
+            finalScore *= ScoreMultipllier;
 
-            if (includeSymmetries) {
-                foreach (OthelloNode node in gameHistory) {
-                    foreach (OthelloNode permutation in GetSymmetries(node)) {
-                        TrainSingle(permutation, finalScore);
-                    }
-                }
-            } else foreach (OthelloNode node in gameHistory) {
+            foreach (OthelloNode node in gameHistory) {
                 TrainSingle(node, finalScore);
             }
         }
 
         private static void TrainSingle(OthelloNode node, int finalScore) {
-            ulong self = node.PlayerBoard;
-            ulong other = node.OtherBoard;
             int pieceCount = BitCount(node.Occupied);
             int relativeScore = node.Turn == BLACK ? finalScore : -finalScore;
 
-            for (int i = 0; i < PatternSets.Length; i++) {
-                foreach (ulong mask in PatternSets[i]) {
+            foreach (KeyValuePair<ulong, ulong> kvp in GetSymmetries(node.PlayerBoard, node.OtherBoard)) {
+                for (int i = 0; i < PatternClasses.Length; i++) {
+                    ulong mask = PatternClasses[i][0];
+
                     Dictionary<ulong, Dictionary<ulong, HeuristicData>> mid;
-                    if (!PatternScores[i].TryGetValue(pieceCount, out mid)) {
+                    if (!PatternClassScores[i].TryGetValue(pieceCount, out mid)) {
                         mid = new Dictionary<ulong, Dictionary<ulong, HeuristicData>>();
-                        PatternScores[i][pieceCount] = mid;
+                        PatternClassScores[i][pieceCount] = mid;
                     }
 
                     Dictionary<ulong, HeuristicData> inner;
-                    if (!mid.TryGetValue(self & mask, out inner)) {
+                    if (!mid.TryGetValue(kvp.Key & mask, out inner)) {
                         inner = new Dictionary<ulong, HeuristicData>();
-                        mid[self & mask] = inner;
+                        mid[kvp.Key & mask] = inner;
                     }
 
                     HeuristicData data;
-                    if (inner.TryGetValue(other & mask, out data)) {
-                        inner[other & mask] = new HeuristicData(data, relativeScore);
+                    if (inner.TryGetValue(kvp.Value & mask, out data)) {
+                        inner[kvp.Value & mask] = new HeuristicData(data, relativeScore);
                     } else {
-                        inner[other & mask] = new HeuristicData(relativeScore);
+                        inner[kvp.Value & mask] = new HeuristicData(relativeScore);
                     }
                 }
             }
@@ -1069,6 +1355,52 @@ namespace Othello {
             }
         }
 
+        public static void CalculateWeights() {
+            for (int i = 0; i < PatternClasses.Length; i++) {
+                double possibilities = Math.Pow(3.0, BitCount(PatternClasses[i][0])) + 1.0;
+
+                // Zero all the weights
+                for (int pieceCount = 0; pieceCount < 65; pieceCount++) {
+                    PatternClassWeights[i, pieceCount] = 0.0;
+                }
+
+                // Average the confidence values to determine each initial weight
+                foreach (KeyValuePair<int, Dictionary<ulong, Dictionary<ulong, HeuristicData>>> kvp in PatternClassScores[i]) {
+                    int pieceCount = kvp.Key;
+                    foreach (Dictionary<ulong, HeuristicData> inner in kvp.Value.Values) {
+                        foreach (HeuristicData data in inner.Values) {
+                            PatternClassWeights[i, pieceCount] += data.Confidence;
+                        }
+                    }
+                }
+
+                // Multiply by another confidence measure based on our coverage of the pattern valuation space
+                for (int pieceCount = 0; pieceCount < 65; pieceCount++) {
+                    double temp = PatternClassWeights[i, pieceCount];
+                    temp *= 100.0 / possibilities;
+                    PatternClassWeights[i, pieceCount] = HeuristicData.Sigmoid(temp);
+                }
+            }
+
+            // Normalize the weights for a total magnitude of 1
+            for (int pieceCount = 0; pieceCount < 65; pieceCount++) {
+                double weightSum = 0.0;
+                for (int i = 0; i < PatternClasses.Length; i++) {
+                    weightSum += Math.Abs(PatternClassWeights[i, pieceCount]);
+                }
+
+                if (weightSum > 0.0) {
+                    weightSum = 1.0 / weightSum;
+                    for (int i = 0; i < PatternClasses.Length; i++) {
+                        PatternClassWeights[i, pieceCount] *= weightSum;
+                    }
+                }
+            }
+
+            // Recalculate the pattern scores to incorporate the new weights.
+            CalculatePatternScores();
+        }
+
         #endregion
 
         #region Serialization
@@ -1088,6 +1420,17 @@ namespace Othello {
             }
             writer.WriteLine(format, args);
 #endif
+        }
+
+        private static void WriteHeuristicData<T>(StreamWriter writer, T key, HeuristicData data) {
+            writer.Write(
+                "{0},{1},{2},{3},{4},{5} ",
+                key,
+                data.Count,
+                data.WinCount,
+                data.LossCount,
+                data.TotalWinScore,
+                data.TotalLossScore);
         }
 
         public static void WriteHeuristics(string path) {// TODO: take file name instead of writer
@@ -1116,18 +1459,17 @@ namespace Othello {
 
                         WriteComment(writer, 1, "{0} Entries", keys.Count);
                         foreach (int key in keys) {
-                            HeuristicData data = FeatureScores[i][pieceCount][key];
-                            writer.Write("{0},{1},{2},{3} ", key, data.Score, data.Count, data.TotalScore);
+                            WriteHeuristicData(writer, key, FeatureScores[i][pieceCount][key]);
                         }
                         writer.WriteLine();
                     }
                 }
 
-                for (int i = 0; i < PatternSets.Length; i++) {
-                    WriteComment(writer, "PatternSet {0}", i);
-                    writer.WriteLine("PatternSet");
+                for (int i = 0; i < PatternClasses.Length; i++) {
+                    WriteComment(writer, "PatternClass {0}", i);
+                    writer.WriteLine("PatternClass");
 
-                    ulong[] masks = PatternSets[i];
+                    ulong[] masks = PatternClasses[i];
                     for (int j = 0; j < masks.Length; j++) {
                         ulong mask = masks[j];
                         WriteComment(writer, 1, "Pattern {0}", j);
@@ -1136,14 +1478,14 @@ namespace Othello {
 #endif
                     }
 
-                    List<int> pieceCounts = PatternScores[i].Keys.ToList();
+                    List<int> pieceCounts = PatternClassScores[i].Keys.ToList();
                     pieceCounts.Sort();
 
                     WriteComment(writer, "Data for {0} piece counts", pieceCounts.Count);
                     foreach (int pieceCount in pieceCounts) {
                         writer.WriteLine("PieceCount {0}", pieceCount);
 
-                        Dictionary<ulong, Dictionary<ulong, HeuristicData>> selfBoards = PatternScores[i][pieceCount];
+                        Dictionary<ulong, Dictionary<ulong, HeuristicData>> selfBoards = PatternClassScores[i][pieceCount];
                         WriteComment(writer, 1, "{0} Entries", selfBoards.Count);
                         foreach (ulong self in selfBoards.Keys) {
                             Dictionary<ulong, HeuristicData> otherBoards = selfBoards[self];
@@ -1151,15 +1493,15 @@ namespace Othello {
 
                             writer.WriteLine(self);
                             foreach (ulong other in otherBoards.Keys) {
-                                HeuristicData data = otherBoards[other];
-                                writer.Write("{0},{1},{2},{3} ", other, data.Score, data.Count, data.TotalScore);
+                                WriteHeuristicData(writer, other, otherBoards[other]);
                             }
                             writer.WriteLine();
                         }
                     }
                 }
-            } catch {
+            } catch (Exception ex) {
                 Console.WriteLine("error.");
+                Console.WriteLine(ex);
             } finally {
                 writer.Close();
             }
@@ -1171,17 +1513,18 @@ namespace Othello {
 
         #region Deserialization
 
-        private static int HeuristicDataMaxCount = 0;
+        private static uint HeuristicDataMaxCount = 0u;
 
         public static void ClearHeuristics() {
             foreach (Dictionary<int, Dictionary<int, HeuristicData>> dict in FeatureScores) {
                 dict.Clear();
             }
-            foreach (Dictionary<int, Dictionary<ulong, Dictionary<ulong, HeuristicData>>> dict in PatternScores) {
+            foreach (Dictionary<int, Dictionary<ulong, Dictionary<ulong, HeuristicData>>> dict in PatternClassScores) {
                 dict.Clear();
             }
 
-            GC.Collect();
+            HeuristicDataMaxCount = 0u;
+            InitializeWeights();
         }
 
         private static void CheckEOF(string line) {
@@ -1227,11 +1570,12 @@ namespace Othello {
             line = line.Substring(match.Length).Trim();
             return true;
         }
+
         private static HeuristicData ParseHeuristicData<T>(string input, Func<string, T> parse, out T key) {
             CheckEOF(input);
             input = input.Trim();
-            string[] data = input.Split(new char[] { ',' }, 4);
-            if (data == null || data.Length < 4) {
+            string[] data = input.Split(new char[] { ',' }, 6);
+            if (data == null || data.Length < 6) {
                 throw new FormatException(string.Format(
                     "Cannot parse \"{0}\" as {1}",
                     input,
@@ -1239,15 +1583,24 @@ namespace Othello {
             }
 
             key = parse(data[0]);
-            int count = int.Parse(data[2]);
+            uint count = uint.Parse(data[1]);
             if (count > HeuristicDataMaxCount) {
                 HeuristicDataMaxCount = count;
             }
-            return new HeuristicData() {
-                Score = int.Parse(data[1]),
+            double totalWinScore = double.Parse(data[4]);
+            double totalLossScore = double.Parse(data[5]);
+            HeuristicData result = new HeuristicData() {
+                Score = 0,
                 Count = count,
-                TotalScore = double.Parse(data[3])
+                WinCount = uint.Parse(data[2]),
+                LossCount = uint.Parse(data[3]),
+                TotalWinScore = totalWinScore,
+                TotalLossScore = totalLossScore,
+                TotalScore = totalWinScore + totalLossScore
             };
+            result.Score = result.CalculateScore();
+
+            return result;
         }
 
         public static void ReadHeuristics(string path) {
@@ -1280,7 +1633,7 @@ namespace Othello {
 
                         line = NextLine(reader);
                         CheckEOF(line);
-                        foreach (string entry in line.Split(new char[0], StringSplitOptions.RemoveEmptyEntries)) {
+                        foreach (string entry in line.Split((char[])null, StringSplitOptions.RemoveEmptyEntries)) {
                             int key;
                             HeuristicData orig;
                             HeuristicData data = ParseHeuristicData(entry, int.Parse, out key);
@@ -1293,17 +1646,17 @@ namespace Othello {
                     }
                 }
 
-                for (int i = 0; i < PatternSets.Length; i++) {
-                    EatLine(reader, "PatternSet", line);
+                for (int i = 0; i < PatternClasses.Length; i++) {
+                    EatLine(reader, "PatternClass", line);
 
                     line = null;
                     int pieceCount;
                     while (TryEatPrefix(reader, "PieceCount", out line, line) &&
                         int.TryParse(line, out pieceCount)) {
                         Dictionary<ulong, Dictionary<ulong, HeuristicData>> mid;
-                        if (!PatternScores[i].TryGetValue(pieceCount, out mid)) {
+                        if (!PatternClassScores[i].TryGetValue(pieceCount, out mid)) {
                             mid = new Dictionary<ulong, Dictionary<ulong, HeuristicData>>();
-                            PatternScores[i][pieceCount] = mid;
+                            PatternClassScores[i][pieceCount] = mid;
                         }
 
                         ulong self;
@@ -1318,7 +1671,7 @@ namespace Othello {
 
                             line = NextLine(reader);
                             CheckEOF(line);
-                            foreach (string entry in line.Split(new char[0], StringSplitOptions.RemoveEmptyEntries)) {
+                            foreach (string entry in line.Split((char[])null, StringSplitOptions.RemoveEmptyEntries)) {
                                 ulong other;
                                 HeuristicData orig;
                                 HeuristicData data = ParseHeuristicData(entry, ulong.Parse, out other);
@@ -1341,12 +1694,16 @@ namespace Othello {
 
                 // Make sure there's nothing left at end of file.
                 EatLine(reader, null);
-            } catch {
+            } catch (Exception ex) {
                 Console.WriteLine("error.");
+                Console.WriteLine(ex);
                 ClearHeuristics();
             } finally {
                 reader.Close();
             }
+
+            // TODO: populate PatternScores based on PatternClassScores, or remove PatternScores
+            CalculateWeights();
 
             Console.WriteLine("maxCount = {0}", HeuristicDataMaxCount);
             Console.WriteLine("done.");
@@ -1488,6 +1845,19 @@ namespace Othello {
                 Console.WriteLine(" ({0} wins)", whiteName);
             } else {
                 Console.WriteLine(" (The game is a draw)");
+            }
+        }
+
+        public static void PrintWeights() {
+            for (int i = 0; i < PatternClasses.Length; i++) {
+                Console.WriteLine("Pattern {0}:", i);
+                Console.WriteLine(PrintUlong(PatternClasses[i][0]));
+
+                for (int pieceCount = 0; pieceCount < 65; pieceCount++) {
+                    Console.WriteLine("{0:00} \t{1:00.000}", pieceCount, PatternClassWeights[i, pieceCount]);
+                }
+
+                Console.WriteLine();
             }
         }
 
