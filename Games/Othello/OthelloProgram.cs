@@ -18,20 +18,26 @@ namespace Othello {
         // TODO: verbosity levels: Board, Turn, Game, GameSet, Output, None
         static void Main(string[] args) {
             const bool verbose = false;
-            const TrainingMode randomTraining = TrainingMode.LossDraw;
+            const TrainingMode randomTraining = TrainingMode.All;
             const TrainingMode selfTraining = TrainingMode.All;
             const TrainingMode adversarialTraining = TrainingMode.All; // TODO: evaluate relative strength and adjust training mode accordingly
-            const int randomGames = 100;
-            const int selfGames = 50;
+            const int randomGames = 1000;
+            const int selfGames = 100;
             const int adversarialGames = 100;
+            const int depth = 2;
             const string outputPath = "params.txt";
 
             Player<OthelloNode> p0;
             Player<OthelloNode> p1;
 
+            // TODO: re-enable calling CalculatePatternScore() if this is changed from
+            //       PatternScoreSlow() to PatternScore()
+            // TODO: also, optimize CalculateWeights() and especially CalculatePatternScores()
+            Func<OthelloNode, int> patternEval = node => node.PatternScoreSlow();
+
+            int randomGamesPlayed = 0;
             int selfGamesPlayed = 0;
             int adversarialGamesPlayed = 0;
-            int depth = 1;
 
             int paramFilesLoaded = 0;
             while (true) {
@@ -48,11 +54,12 @@ namespace Othello {
             }
 
             do {
-                p0 = new MtdFPlayer(depth, node => node.PatternScore(), verbose: verbose, randomness: false);
+                p0 = new MtdFPlayer(1, patternEval, verbose: verbose, randomness: false);
                 p1 = new RandomPlayer();
                 PlayGames(p0, p1, randomGames, verbose, training: randomTraining, p1Name: "RandomPlayer");
 
-                Console.WriteLine("** Played {0} games against random **", randomGames);
+                randomGamesPlayed += randomGames;
+                Console.WriteLine("** Played {0} games against random **", randomGamesPlayed);
                 Console.WriteLine();
                 if (randomTraining != TrainingMode.None && randomGames > 0) {
                     OthelloNode.WriteHeuristics(outputPath);
@@ -60,8 +67,8 @@ namespace Othello {
             } while (randomGames > 0 && selfGames <= 0 && adversarialGames <= 0);
 
             while (true) {
-                p0 = new MtdFPlayer(depth, node => node.PatternScore(), verbose: verbose, randomness: true, exploring: true);
-                p1 = new MtdFPlayer(depth, node => node.PatternScore(), verbose: verbose, randomness: true, exploring: true);
+                p0 = new MtdFPlayer(depth, patternEval, verbose: verbose, randomness: true, exploring: true);
+                p1 = new MtdFPlayer(depth, patternEval, verbose: verbose, randomness: true, exploring: true);
                 PlayGames(p0, p1, selfGames, verbose, training: selfTraining);
 
                 selfGamesPlayed += selfGames;
@@ -71,7 +78,7 @@ namespace Othello {
                     OthelloNode.WriteHeuristics(outputPath);
                 }
 
-                p0 = new MtdFPlayer(depth, node => node.PatternScore(), verbose: false, randomness: true, exploring: true);
+                p0 = new MtdFPlayer(depth, patternEval, verbose: false, randomness: true, exploring: true);
                 p1 = new MtdFPlayer(depth + 1, OthelloNode.Eval1, verbose: false, randomness: true, exploring: true);
                 PlayGames(p0, p1, adversarialGames, verbose, training: adversarialTraining, p1Name: "Adversary+");
 
@@ -98,7 +105,7 @@ namespace Othello {
             string p1Name = null,
             string outputLog = null,
             int threads = 0) {
-            const double emaFactor = 0.97;
+            const double emaFactor = 0.96;
 
             int totalScore = 0;
             int p0Wins = 0;
@@ -218,14 +225,16 @@ namespace Othello {
             List<OthelloNode> gameHistory,
             bool verbose = false,
             TrainingMode training = TrainingMode.All) {
+            OthelloNode board = new OthelloNode();
+            List<OthelloNode> children;
+            
             if (gameHistory == null) {
                 training = TrainingMode.None;
             } else {
                 gameHistory.Clear();
+                gameHistory.Add(board);
             }
 
-            OthelloNode board = new OthelloNode();
-            List<OthelloNode> children;
             while (!board.IsGameOver) {
                 if (verbose || board.Turn == OthelloNode.BLACK && black is HumanPlayer ||
                     board.Turn == OthelloNode.WHITE && white is HumanPlayer) {
@@ -284,6 +293,9 @@ namespace Othello {
         }
 
         #region Test Code
+
+        // TODO: A test that takes some pseudorandom boards and makes sure the evaluation function is
+        //       identical for all board symmetries.
 
         private static void RunTests() {
             TestBitCount();

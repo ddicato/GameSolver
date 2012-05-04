@@ -67,9 +67,8 @@ namespace Othello {
         // to mention an evaluation function that maps to a number, not just a bool.
         public override bool IsGameOver {
             get {
-                // TODO: make this more efficient with caching
-                return BitCount(this.board[BLACK] | this.board[WHITE]) == 64 ||
-                    (this.Pass && this.GetChildren().Count == 0);
+                // TODO: make this more efficient with caching - add public property ChildCount
+                return this.OccupiedSquareCount == 64 || (this.Pass && this.GetChildren().Count == 0);
             }
         }
 
@@ -77,6 +76,18 @@ namespace Othello {
         public int Score {
             get {
                 return BitCount(this.board[BLACK]) - BitCount(this.board[WHITE]);
+            }
+        }
+
+        public int OccupiedSquareCount {
+            get {
+                return BitCount(this.Occupied);
+            }
+        }
+
+        public int EmptySquareCount {
+            get {
+                return BitCount(~this.Occupied);
             }
         }
 
@@ -218,12 +229,10 @@ namespace Othello {
 
             #endregion
 
-            // TODO: Get rid of additionalPatterns hard-code just a few pattern classes here.
-            ulong[] additionalPatterns = new ulong[] { };
-
+            // TODO: Get rid of above patterhs and hard-code just a few pattern classes here.
             // TODO: update comment
             // Store non-overlapping groups of patterns. Used for fast board evaluation.
-            // TODO: flaw: Scores for pattern valuations witnh zeros are shared among patterns. So
+            // TODO: flaw: Scores for pattern valuations with all zeros are shared among patterns. So
             //       if one of the ulongs we use for lookup is 0, we can't tell which pattern we're
             //       looking up a score for, which also conflates these patterns during training.
             //\\//PatternSets = new ulong[][] {
@@ -232,12 +241,17 @@ namespace Othello {
                 Column,
                 HorizEdge,
                 VertEdge,
-                DownLeft,
-                DownRight,
+                //DownLeft,
+                //DownRight,
                 Corner33,
                 Corner52Cw,
                 Corner52Ccw,
-                additionalPatterns
+                new ulong[] {
+                    DownLeft[0] | DownLeft[1],
+                    DownLeft[2],
+                    DownLeft[3],
+                    DownLeft[4]
+                }
             };
 
             // Store classes of patterns that are equal modulo board symmetries. Used for training
@@ -258,7 +272,6 @@ namespace Othello {
                     }
                 }
             }
-            //\\//PatternClassGenerators = patternClassGenerators.ToArray();
 
             PatternClasses = new ulong[patternClassGenerators.Count][];
             for (int i = 0; i < PatternClasses.Length; i++) {
@@ -328,6 +341,9 @@ namespace Othello {
 
             // Initialize all the pattern and feature weights to 1, calculating Patterns and PatternScores accordingly.
             InitializeWeights();
+
+            // Create the initial playbook.
+            Playbook = new OthelloPlaybook(new OthelloNode());
         }
 
         private static ulong GenerateDownLeftAt(int iStart, int jStart) {
@@ -361,6 +377,10 @@ namespace Othello {
         }
 
         private static void CalculatePatternScores() {
+            // TODO: temporarily unused
+        }
+
+        private static void _CalculatePatternScores() {
             for (int i = 0; i < Patterns.Length; i++) {
                 int patternClass = PatternClassIndices[i];
                 Dictionary<int, Dictionary<ulong, Dictionary<ulong, HeuristicData>>> source = PatternClassScores[patternClass];
@@ -453,6 +473,14 @@ namespace Othello {
 
             transformIndex = 0;
             return false;
+        }
+
+        public bool IsIsomorphic(OthelloNode node) {
+            return GetSymmetries(this).Any(node.Equals);
+        }
+
+        public bool IsIsomorphicParent(OthelloNode child) {
+            return !this.IsGameOver && this.GetChildren().Any(sibling => GetSymmetries(sibling).Any(child.Equals));
         }
 
         private static ulong RotateRight(ulong board) {
@@ -1054,7 +1082,7 @@ namespace Othello {
         // TODO: abstract pattern-eval score as a feature? unify with pattern eval features?
 
         private struct HeuristicData {
-            public int Score;
+            public int Score; // TODO: rename this? Could be confused with Total[,Win,Loss]Score
             public uint Count;
             public uint WinCount;
             public uint LossCount;
@@ -1115,8 +1143,12 @@ namespace Othello {
             }
 
             public int CalculateScore() {
-                //\\// TODO: replace with winning probability?
                 return (int)Math.Round(this.TotalScore / this.Count);
+
+                //\\// TODO: replace with winning probability? The following is used in the literature:
+                // wins + draws/2 = wins + (games - wins - losses)/2 = (games + wins - losses)/2
+                //double effectiveWinCount = ((double)this.Count - this.LossCount + this.WinCount) * 0.5;
+                //return (int)Math.Round((effectiveWinCount + 0.5) / (this.Count + 1.0) * ScoreMultipllier);
             }
 
             public static double Sigmoid(double x) {
@@ -1125,7 +1157,8 @@ namespace Othello {
 
             public double Confidence {
                 get {
-                    // TODO: Take a more general measure and multiply my Sigmoid(this.Score / ScoreMultiplier)?
+                    return 1.0;/*
+                    // TODO: Take a more general measure and multiply by Sigmoid(this.Score / ScoreMultiplier)?
                     //       That would also correct the sign.
 
                     double winSpread = (double)this.WinCount - (double)this.LossCount;
@@ -1137,7 +1170,7 @@ namespace Othello {
                     } else {
                         double drawCount = (double)this.Count - nonDrawCount;
                         return Sigmoid(drawCount) * Sigmoid(this.Count + 1.0);
-                    }
+                    }*/
                 }
             }
         }
@@ -1146,7 +1179,7 @@ namespace Othello {
         /*public int HeuristicScore() {
             ulong self = this.PlayerBoard;
             ulong other = this.OtherBoard;
-            int pieceCount = BitCount(this.Occupied);
+            int pieceCount = this.PieceCount;
             int result = 0;
 
             for (int i = 0; i < PatternSets.Length; i++) {
@@ -1177,7 +1210,7 @@ namespace Othello {
         public int PatternScore() {
             ulong self = this.PlayerBoard;
             ulong other = this.OtherBoard;
-            int pieceCount = BitCount(this.Occupied);
+            int pieceCount = this.OccupiedSquareCount;
             int result = 0;
 
             for (int i = 0; i < Patterns.Length; i++) {
@@ -1195,8 +1228,11 @@ namespace Othello {
             return result;
         }
 
+        // While slightly slower than PatternScore(), this evaluation function has the
+        // advantage of benefiting immediately from training updates without requiring
+        // a costly call to CalculateWeights() and CalculatePatternScores()
         public int PatternScoreSlow() {
-            int pieceCount = BitCount(this.Occupied);
+            int pieceCount = this.OccupiedSquareCount;
             double result = 0.0;
 
             foreach (KeyValuePair<ulong, ulong> kvp in GetSymmetries(this.PlayerBoard, this.OtherBoard)) {
@@ -1217,7 +1253,7 @@ namespace Othello {
         }
 
         public int FeatureScore() {
-            int pieceCount = BitCount(this.Occupied);
+            int pieceCount = this.OccupiedSquareCount;
             int result = 0;
 
             for (int i = 0; i < Features.Length; i++) {
@@ -1236,7 +1272,7 @@ namespace Othello {
         /*public int UnknownPatterns() {
             ulong self = this.PlayerBoard;
             ulong other = this.OtherBoard;
-            int pieceCount = BitCount(this.Occupied);
+            int pieceCount = this.PieceCount;
             int result = 0;
 
             for (int i = 0; i < PatternSets.Length; i++) {
@@ -1255,7 +1291,7 @@ namespace Othello {
         }*/
 
         public int UnknownPatterns() {
-            int pieceCount = BitCount(this.Occupied);
+            int pieceCount = this.OccupiedSquareCount;
             int result = 0;
 
             foreach (KeyValuePair<ulong, ulong> kvp in GetSymmetries(this.PlayerBoard, this.OtherBoard)) {
@@ -1276,7 +1312,7 @@ namespace Othello {
         }
 
         public int UnknownFeatures() {
-            int pieceCount = BitCount(this.Occupied);
+            int pieceCount = this.OccupiedSquareCount;
             int result = 0;
 
             for (int i = 0; i < Features.Length; i++) {
@@ -1297,6 +1333,8 @@ namespace Othello {
         // Score will be stored as an int, so we multiply to get more significant digits.
         private const int ScoreMultipllier = 10000; // TODO: serialize this so it is changeable
 
+        private static readonly OthelloPlaybook Playbook;
+
         // finalScore is black's piece count minus white's
         public static void Train(List<OthelloNode> gameHistory, int finalScore) {
             // TODO: interpolate between turns when averaging. For features, also interpolate between feature values
@@ -1306,10 +1344,20 @@ namespace Othello {
             foreach (OthelloNode node in gameHistory) {
                 TrainSingle(node, finalScore);
             }
+
+            Console.Write("Adding game to playbook...");
+            Playbook.AddGame(gameHistory);
+            Console.WriteLine("done.");
+
+            Console.Write("Negamaxing scores...");
+            int rootScore = Playbook.Root.Score;
+            Console.WriteLine("done. Root score = {0}", rootScore);
+
+            Playbook.PrintStats();
         }
 
         private static void TrainSingle(OthelloNode node, int finalScore) {
-            int pieceCount = BitCount(node.Occupied);
+            int pieceCount = node.OccupiedSquareCount;
             int relativeScore = node.Turn == BLACK ? finalScore : -finalScore;
 
             foreach (KeyValuePair<ulong, ulong> kvp in GetSymmetries(node.PlayerBoard, node.OtherBoard)) {

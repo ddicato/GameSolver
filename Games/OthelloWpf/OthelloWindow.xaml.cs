@@ -143,7 +143,7 @@ namespace OthelloWpf {
 
         private void InitPlayers() {
             Player<OthelloNode> black =
-                new MtdFPlayer(this.SearchDepth, node => node.PatternScore(), verbose: true, solveEndgame: true, randomness: this.Randomness);
+                new MtdFPlayer(this.SearchDepth, node => node.PatternScoreSlow(), verbose: true, solveEndgame: true, randomness: this.Randomness);
                 //new RandomPlayer();
             Player<OthelloNode> white =
                 new MtdFPlayer(this.SearchDepth, OthelloNode.Eval1, verbose: true, solveEndgame: true, randomness: this.Randomness);

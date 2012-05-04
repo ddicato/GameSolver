@@ -80,6 +80,7 @@
     <Compile Include="BruteForcePlayer.cs" />
     <Compile Include="MtdFPlayer.cs" />
     <Compile Include="OthelloNode.cs" />
+    <Compile Include="OthelloPlaybook.cs" />
     <Compile Include="OthelloProgram.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="RandomPlayer.cs" />

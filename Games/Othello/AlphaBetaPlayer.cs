@@ -189,7 +189,7 @@ namespace Othello {
 
             // Solve endgame if we can
             const int endgameDepthDiff = 6;
-            if (this.SolveEndgame && OthelloNode.BitCount(~nodes[0].Occupied) < this.depth + endgameDepthDiff) {
+            if (this.SolveEndgame && nodes[0].EmptySquareCount < this.depth + endgameDepthDiff) {
                 if (this.Verbose) {
                     Console.Write("Solving endgame... ");
                 }
