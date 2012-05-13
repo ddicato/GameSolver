@@ -24,10 +24,10 @@ namespace Othello {
             const TrainingMode randomTraining = TrainingMode.All;
             const TrainingMode selfTraining = TrainingMode.All;
             const TrainingMode adversarialTraining = TrainingMode.All; // TODO: evaluate relative strength and adjust training mode accordingly
-            const int randomGames = 1000;
-            const int selfGames = 100;
-            const int adversarialGames = 100;
-            const int depth = 2;
+            const int randomGames = 250;
+            const int selfGames = 250;
+            const int adversarialGames = 500;
+            const int depth = 3;
 
             Player<OthelloNode> p0;
             Player<OthelloNode> p1;
@@ -41,47 +41,24 @@ namespace Othello {
             int selfGamesPlayed = 0;
             int adversarialGamesPlayed = 0;
 
-            OthelloNode.ReadHeuristics(ParamsPath);
             OthelloNode.ReadPlaybook(PlaybookPath);
+            OthelloNode.ReadHeuristics(ParamsPath);
+            OthelloNode.PrintPlaybookStats();
             
             do {
                 p0 = new MtdFPlayer(1, patternEval, verbose: verbose, randomness: false);
                 p1 = new RandomPlayer();
-                PlayGames(p0, p1, randomGames, verbose, training: randomTraining, p1Name: "RandomPlayer");
-
-                randomGamesPlayed += randomGames;
-                Console.WriteLine("** Played {0} games against random **", randomGamesPlayed);
-                Console.WriteLine();
-                if (randomTraining != TrainingMode.None && randomGames > 0) {
-                    OthelloNode.WriteHeuristics(ParamsPath);
-                    OthelloNode.WritePlaybook(PlaybookPath);
-                }
+                PlayGames(p0, p1, randomGames, ref randomGamesPlayed, verbose, training: randomTraining, p1Name: "RandomPlayer");
             } while (randomGames > 0 && selfGames <= 0 && adversarialGames <= 0);
 
             while (true) {
                 p0 = new MtdFPlayer(depth, patternEval, verbose: verbose, randomness: true, exploring: true);
                 p1 = new MtdFPlayer(depth, patternEval, verbose: verbose, randomness: true, exploring: true);
-                PlayGames(p0, p1, selfGames, verbose, training: selfTraining);
-
-                selfGamesPlayed += selfGames;
-                Console.WriteLine("** Played {0} games against self **", selfGamesPlayed);
-                Console.WriteLine();
-                if (selfTraining != TrainingMode.None && selfGames > 0) {
-                    OthelloNode.WriteHeuristics(ParamsPath);
-                    OthelloNode.WritePlaybook(PlaybookPath);
-                }
+                PlayGames(p0, p1, selfGames, ref selfGamesPlayed, verbose, training: selfTraining, p1Name: "self");
 
                 p0 = new MtdFPlayer(depth, patternEval, verbose: false, randomness: true, exploring: true);
                 p1 = new MtdFPlayer(depth + 1, OthelloNode.Eval1, verbose: false, randomness: true, exploring: true);
-                PlayGames(p0, p1, adversarialGames, verbose, training: adversarialTraining, p1Name: "Adversary+");
-
-                adversarialGamesPlayed += adversarialGames;
-                Console.WriteLine("** Played {0} games against adversary **", adversarialGamesPlayed);
-                Console.WriteLine();
-                if (adversarialTraining != TrainingMode.None && adversarialGames > 0) {
-                    OthelloNode.WriteHeuristics(ParamsPath);
-                    OthelloNode.WritePlaybook(PlaybookPath);
-                }
+                PlayGames(p0, p1, adversarialGames, ref adversarialGamesPlayed, verbose, training: adversarialTraining, p1Name: "Adversary+");
             }
 
             Console.WriteLine("Press Enter to exit.");
@@ -92,7 +69,8 @@ namespace Othello {
         private static void PlayGames(
             Player<OthelloNode> p0,
             Player<OthelloNode> p1,
-            int games = 2,
+            int games,
+            ref int gamesPlayed,
             bool verbose = false,
             TrainingMode training = TrainingMode.All, // evaluated from p0's perspective
             string p0Name = null,
@@ -128,6 +106,8 @@ namespace Othello {
                 }
                 Console.WriteLine("Game {0} of {1}", i + 1, games);
 
+                int playbookCount = OthelloNode.PlaybookCount;
+
                 int result;
                 List<OthelloNode> gameHistory = new List<OthelloNode>();
                 if ((i & 1) == 0) {
@@ -135,14 +115,14 @@ namespace Othello {
                     if (result > 0 && (training & TrainingMode.Win) != TrainingMode.None ||
                         result < 0 && (training & TrainingMode.Loss) != TrainingMode.None ||
                         result == 0 && (training & TrainingMode.Draw) != TrainingMode.None) {
-                        OthelloNode.Train(gameHistory, result);
+                        OthelloNode.TrainPlaybook(gameHistory);
                     }
                 } else {
                     result = GameLoop(p1, p1Name, p0, p0Name, gameHistory, verbose, training);
                     if (result > 0 && (training & TrainingMode.Loss) != TrainingMode.None ||
                         result < 0 && (training & TrainingMode.Win) != TrainingMode.None ||
                         result == 0 && (training & TrainingMode.Draw) != TrainingMode.None) {
-                        OthelloNode.Train(gameHistory, result);
+                        OthelloNode.TrainPlaybook(gameHistory);
                     }
 
                     // We want to display the result from p0's point of view.
@@ -176,6 +156,9 @@ namespace Othello {
                     100.0 * p0WinsEma,
                     100.0 * p1WinsEma,
                     scoreEma);
+                Console.WriteLine(
+                    "{0} new entries added to the game database.",
+                    OthelloNode.PlaybookCount - playbookCount);
 
                 if (writer != null) {
                     writer.WriteLine(
@@ -193,6 +176,7 @@ namespace Othello {
                 writer.Close();
             }
 
+            Console.WriteLine();
             Console.WriteLine(
                 "Out of {0} games: {1} {4} win(s), {2} {5} win(s), and {3} draw(s).",
                 games,
@@ -201,13 +185,19 @@ namespace Othello {
                 games - p0Wins - p1Wins,
                 p0Name,
                 p1Name);
-            Console.WriteLine();
 
-            if (training != TrainingMode.None) {
-                Console.Write("Recalculating feature weights... ");
+            gamesPlayed += games;
+
+            if (training != TrainingMode.None && games > 0) {
+                OthelloNode.WritePlaybook(PlaybookPath);
+                OthelloNode.CalculateHeuristics();
                 OthelloNode.CalculateWeights();
-                Console.WriteLine("done.");
+                OthelloNode.WriteHeuristics(ParamsPath);
+
+                Console.WriteLine();
             }
+
+            Console.WriteLine("** Played {0} games against {1} **", gamesPlayed, p1Name);
             Console.WriteLine();
         }
 

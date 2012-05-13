@@ -1331,23 +1331,13 @@ namespace Othello {
 
         #region Learning
 
+        // TODO: interpolate between turns when averaging. For features, also interpolate between feature values
+        // TODO: more and better learning algorithms: Gradient descent, Temporal-difference
+
         // Score will be stored as an int, so we multiply to get more significant digits.
-        private const int ScoreMultipllier = 10000; // TODO: serialize this so it is changeable
+        private const int ScoreMultiplier = 10000; // TODO: serialize this so it is changeable
 
         private static OthelloPlaybook Playbook;
-
-        // finalScore is black's piece count minus white's
-        public static void Train(List<OthelloNode> gameHistory, int finalScore) {
-            // TODO: interpolate between turns when averaging. For features, also interpolate between feature values
-            // TODO: more and better learning algorithms: Gradient descent, Temporal-difference
-            finalScore *= ScoreMultipllier;
-
-            foreach (OthelloNode node in gameHistory) {
-                TrainSingle(node, finalScore);
-            }
-
-            TrainPlaybook(gameHistory, verbose: false);
-        }
 
         public static void TrainPlaybook(List<OthelloNode> gameHistory, bool verbose = false) {
             DateTime start = DateTime.Now;
@@ -1375,9 +1365,36 @@ namespace Othello {
             }
         }
 
+        // TODO: rename *Heuristics to *Params
+        public static void ClearHeuristics() {
+            foreach (Dictionary<int, Dictionary<int, HeuristicData>> dict in FeatureScores) {
+                dict.Clear();
+            }
+            foreach (Dictionary<int, Dictionary<ulong, Dictionary<ulong, HeuristicData>>> dict in PatternClassScores) {
+                dict.Clear();
+            }
+
+            HeuristicDataMaxCount = 0u;
+            InitializeWeights();
+        }
+
+        public static void CalculateHeuristics() {
+            DateTime start = DateTime.Now;
+            Console.Write("Calculating feature values...");
+
+            ClearHeuristics();
+
+            foreach (KeyValuePair<OthelloNode, int> kvp in Playbook) {
+                TrainSingle(kvp.Key, kvp.Value * ScoreMultiplier);
+            }
+
+            TimeSpan elapsed = DateTime.Now - start;
+            Console.WriteLine("done. Time elapsed = {0:0.000} seconds.", elapsed.TotalSeconds);
+        }
+
+        // TODO: rename this too
         private static void TrainSingle(OthelloNode node, int finalScore) {
             int pieceCount = node.OccupiedSquareCount;
-            int relativeScore = node.Turn == BLACK ? finalScore : -finalScore;
 
             foreach (KeyValuePair<ulong, ulong> kvp in GetSymmetries(node.PlayerBoard, node.OtherBoard)) {
                 for (int i = 0; i < PatternClasses.Length; i++) {
@@ -1397,9 +1414,9 @@ namespace Othello {
 
                     HeuristicData data;
                     if (inner.TryGetValue(kvp.Value & mask, out data)) {
-                        inner[kvp.Value & mask] = new HeuristicData(data, relativeScore);
+                        inner[kvp.Value & mask] = new HeuristicData(data, finalScore);
                     } else {
-                        inner[kvp.Value & mask] = new HeuristicData(relativeScore);
+                        inner[kvp.Value & mask] = new HeuristicData(finalScore);
                     }
                 }
             }
@@ -1415,14 +1432,19 @@ namespace Othello {
 
                 HeuristicData data;
                 if (inner.TryGetValue(score, out data)) {
-                    inner[score] = new HeuristicData(data, relativeScore);
+                    inner[score] = new HeuristicData(data, finalScore);
                 } else {
-                    inner[score] = new HeuristicData(relativeScore);
+                    inner[score] = new HeuristicData(finalScore);
                 }
             }
         }
 
-        public static void CalculateWeights() {
+        public static void CalculateWeights(bool verbose = true) {
+            DateTime start = DateTime.Now;
+            if (verbose) {
+                Console.Write("Calculating feature weights...");
+            }
+
             for (int i = 0; i < PatternClasses.Length; i++) {
                 double possibilities = Math.Pow(3.0, BitCount(PatternClasses[i][0])) + 1.0;
 
@@ -1466,6 +1488,9 @@ namespace Othello {
 
             // Recalculate the pattern scores to incorporate the new weights.
             CalculatePatternScores();
+
+            TimeSpan elapsed = DateTime.Now - start;
+            Console.WriteLine("done. Time elapsed = {0:0.000} seconds.", elapsed.TotalSeconds);
         }
 
         #endregion
@@ -1584,18 +1609,6 @@ namespace Othello {
         #region Parameter Deserialization
 
         private static uint HeuristicDataMaxCount = 0u;
-
-        public static void ClearHeuristics() {
-            foreach (Dictionary<int, Dictionary<int, HeuristicData>> dict in FeatureScores) {
-                dict.Clear();
-            }
-            foreach (Dictionary<int, Dictionary<ulong, Dictionary<ulong, HeuristicData>>> dict in PatternClassScores) {
-                dict.Clear();
-            }
-
-            HeuristicDataMaxCount = 0u;
-            InitializeWeights();
-        }
 
         private static void CheckEOF(string line) {
             if (line == null) {
@@ -1776,10 +1789,10 @@ namespace Othello {
             }
 
             // TODO: populate PatternScores based on PatternClassScores, or remove PatternScores
-            CalculateWeights();
+            CalculateWeights(verbose: false);
 
             TimeSpan elapsed = DateTime.Now - start;
-            Console.WriteLine("done. maxCount = {0}. Time elapsed = {1:0.000} seconds.", HeuristicDataMaxCount, elapsed.TotalSeconds);
+            Console.WriteLine("done. maxCount = {0:n0}. Time elapsed = {1:0.000} seconds.", HeuristicDataMaxCount, elapsed.TotalSeconds);
         }
 
         #endregion
@@ -1800,6 +1813,12 @@ namespace Othello {
 
         public static void PrintPlaybookStats() {
             Playbook.PrintStats();
+        }
+
+        public static int PlaybookCount {
+            get {
+                return Playbook.Count;
+            }
         }
 
         #endregion

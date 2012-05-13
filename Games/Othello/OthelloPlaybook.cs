@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Diagnostics;
@@ -8,7 +9,7 @@ using System.Text;
 
 namespace Othello {
     // TODO: implement ICollection<OthelloNode>?
-    public class OthelloPlaybook {
+    public class OthelloPlaybook : IEnumerable<KeyValuePair<OthelloNode, int>> {
         public readonly Entry Root;
 
         private readonly Dictionary<OthelloNode, Entry> entries = new Dictionary<OthelloNode, Entry>();
@@ -23,6 +24,12 @@ namespace Othello {
 
             this.Root = new Entry(this, root);
             this.AddEntry(this.Root);
+        }
+
+        public int Count {
+            get {
+                return this.entries.Count;
+            }
         }
 
         private void AddEntry(Entry entry) {
@@ -87,6 +94,18 @@ namespace Othello {
             this.Root.Unlink();
             this.AddEntry(this.Root);
         }
+
+        #region IEnumerable<KeyValuePair<OthelloNode, int>> Members
+
+        public IEnumerator<KeyValuePair<OthelloNode, int>> GetEnumerator() {
+            return this.entries.Values.Select(entry => new KeyValuePair<OthelloNode, int>(entry.State, entry.Score)).GetEnumerator();
+        }
+
+        IEnumerator IEnumerable.GetEnumerator() {
+            return this.GetEnumerator();
+        }
+
+        #endregion
 
         #region Serialization
 
@@ -169,7 +188,6 @@ namespace Othello {
 
                     writer.WriteLine(entry.State.Serialize());
                 }
-
             } catch (Exception ex) {
                 Console.WriteLine("error.");
                 Console.WriteLine(ex);
@@ -205,7 +223,7 @@ namespace Othello {
                 }
 
                 reader = new StreamReader(path);
-                Console.Write("Loading playbook...");
+                Console.Write("Loading game database...");
             } catch {
                 Console.WriteLine("I/O Error.");
                 return;
@@ -268,6 +286,8 @@ namespace Othello {
                         string.Format("Expected EOF after {0} lines.", entryCount + 1));
                 }
 
+                Console.Write(" .");
+
                 // Second pass - create playbook entries.
                 Entry[] entryArray = new Entry[entryCount];
                 for (int i = 0; i < entryCount; i++) {
@@ -279,6 +299,8 @@ namespace Othello {
 
                     entryArray[i] = entry;
                 }
+
+                Console.Write(" .");
 
                 // Third pass - link parents and children.
                 for (int i = 0; i < entryCount; i++) {
@@ -296,6 +318,8 @@ namespace Othello {
                         }
                     }
                 }
+
+                Console.Write(" .");
             } catch (Exception ex) {
                 Console.WriteLine("error.");
                 Console.WriteLine(ex);
@@ -306,7 +330,10 @@ namespace Othello {
             }
 
             TimeSpan elapsed = DateTime.Now - start;
-            Console.WriteLine("done. Time elapsed = {0:0.000} seconds.", elapsed.TotalSeconds);
+            Console.WriteLine(
+                "done. {0:n0} entries. Time elapsed = {1:0.000} seconds.",
+                this.entries.Count,
+                elapsed.TotalSeconds);
         }
 
         #endregion
@@ -316,7 +343,7 @@ namespace Othello {
         public void PrintStats() {
             Console.WriteLine(string.Format(
                 CultureInfo.CurrentCulture,
-                "Othello Playbook with {0:n} entries.",
+                "Othello Playbook with {0:n0} entries.",
                 this.entries.Count));
             Console.WriteLine(
                 "Root node: {0} {1}",
@@ -342,6 +369,17 @@ namespace Othello {
                     PrintScores(grandchildren);
                 }
             }
+
+            Console.WriteLine("Number of entries by game stage:");
+            List<int> gameStages = this.entriesByGameStage.Keys.ToList();
+            gameStages.Sort();
+            int totalCount = 0;
+            foreach (int gameStage in gameStages) {
+                int count = this.entriesByGameStage[gameStage].Count;
+                totalCount += count;
+                Console.WriteLine("{0:##} {1:n0}", gameStage, count);
+            }
+            Console.WriteLine("Total = {0:n0}", totalCount);
 
             Console.WriteLine();
         }
@@ -369,8 +407,8 @@ namespace Othello {
         public class Entry {
             private readonly OthelloPlaybook playbook;
 
-            public readonly List<Entry> Parents = new List<Entry>();
-            public readonly List<Entry> Children = new List<Entry>();
+            public readonly List<Entry> Parents = new List<Entry>(1);
+            public readonly List<Entry> Children = new List<Entry>(); // TODO: add a capacity?
 
             // TODO: add ExactScore to store solved endgames
             public readonly OthelloNode State;
@@ -407,10 +445,11 @@ namespace Othello {
                 }
             }
 
-            public int? SolvedScore {
+            // TODO
+            /*public int? SolvedScore {
                 get;
                 private set;
-            }
+            }*/
 
             public int UnexploredChildren {
                 get {
@@ -436,10 +475,11 @@ namespace Othello {
 
             public void AddParent(Entry parent) {
                 Debug.Assert(this.playbook == parent.playbook);
-
+#if DEBUG
                 if (!parent.State.IsIsomorphicParent(this.State)) {
                     throw new ArgumentException();
                 }
+#endif
 
                 if (!this.Parents.Any(parent.Equals)) {
                     this.Parents.Add(parent);
@@ -450,10 +490,11 @@ namespace Othello {
             // TODO: Search for all possible parents and link them up. This may prove prohibitive.
             public void AddChild(Entry child) {
                 Debug.Assert(this.playbook == child.playbook);
-
+#if DEBUG
                 if (!this.State.IsIsomorphicParent(child.State)) {
                     throw new ArgumentException();
                 }
+#endif
 
                 if (!this.Children.Any(child.Equals)) {
                     this.Children.Add(child);
