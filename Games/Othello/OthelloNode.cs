@@ -1,7 +1,8 @@
-﻿//#define VERBOSE_SERIALIZATION
+﻿//#define VERBOSE_PARAM_SERIALIZATION
 
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -1333,7 +1334,7 @@ namespace Othello {
         // Score will be stored as an int, so we multiply to get more significant digits.
         private const int ScoreMultipllier = 10000; // TODO: serialize this so it is changeable
 
-        private static readonly OthelloPlaybook Playbook;
+        private static OthelloPlaybook Playbook;
 
         // finalScore is black's piece count minus white's
         public static void Train(List<OthelloNode> gameHistory, int finalScore) {
@@ -1345,15 +1346,33 @@ namespace Othello {
                 TrainSingle(node, finalScore);
             }
 
-            Console.Write("Adding game to playbook...");
+            TrainPlaybook(gameHistory, verbose: false);
+        }
+
+        public static void TrainPlaybook(List<OthelloNode> gameHistory, bool verbose = false) {
+            DateTime start = DateTime.Now;
+            TimeSpan elapsed;
+
+            if (verbose) {
+                Console.Write("Adding game to playbook...");
+            }
+
             Playbook.AddGame(gameHistory);
-            Console.WriteLine("done.");
 
-            Console.Write("Negamaxing scores...");
+            if (verbose) {
+                elapsed = DateTime.Now - start;
+                Console.WriteLine("done. Time elapsed = {0:0.000} seconds.", elapsed.TotalSeconds);
+
+                Console.Write("Negamaxing scores...");
+                start = DateTime.Now;
+            }
+
             int rootScore = Playbook.Root.Score;
-            Console.WriteLine("done. Root score = {0}", rootScore);
 
-            Playbook.PrintStats();
+            if (verbose) {
+                elapsed = DateTime.Now - start;
+                Console.WriteLine("done. Root score = {0}. Time elapsed = {1:0.000} seconds.", rootScore, elapsed.TotalSeconds);
+            }
         }
 
         private static void TrainSingle(OthelloNode node, int finalScore) {
@@ -1451,14 +1470,14 @@ namespace Othello {
 
         #endregion
 
-        #region Serialization
+        #region Parameter Serialization
 
         private static void WriteComment(StreamWriter writer, string format, params object[] args) {
             WriteComment(writer, 0, format, args);
         }
 
         private static void WriteComment(StreamWriter writer, int indentLevel, string format, params object[] args) {
-#if VERBOSE_SERIALIZATION
+#if VERBOSE_PARAM_SERIALIZATION
             const string indent = "    ";
             const string comment = "#   ";
 
@@ -1481,13 +1500,14 @@ namespace Othello {
                 data.TotalLossScore);
         }
 
-        public static void WriteHeuristics(string path) {// TODO: take file name instead of writer
-#if VERBOSE_SERIALIZATION
+        public static void WriteHeuristics(string path) {
+#if VERBOSE_PARAM_SERIALIZATION
             const string indent = "    ";
             const string comment = "#   ";
 #endif
 
             Console.Write("Saving evaluation parameters...");
+            DateTime start = DateTime.Now;
             StreamWriter writer = new StreamWriter(path, false);
 
             try {
@@ -1550,16 +1570,18 @@ namespace Othello {
             } catch (Exception ex) {
                 Console.WriteLine("error.");
                 Console.WriteLine(ex);
+                return;
             } finally {
                 writer.Close();
             }
 
-            Console.WriteLine("done.");
+            TimeSpan elapsed = DateTime.Now - start;
+            Console.WriteLine("done. Time elapsed = {0:0.000} seconds.", elapsed.TotalSeconds);
         }
 
         #endregion
 
-        #region Deserialization
+        #region Parameter Deserialization
 
         private static uint HeuristicDataMaxCount = 0u;
 
@@ -1652,14 +1674,16 @@ namespace Othello {
         }
 
         public static void ReadHeuristics(string path) {
+            DateTime start = DateTime.Now;
+
             StreamReader reader;
             try {
                 if (!File.Exists(path)) {
-                    Console.WriteLine("File not found.");
+                    Console.WriteLine("File not found: {0}", path);
                 }
 
-                Console.Write("Loading evaluation parameters...");
                 reader = new StreamReader(path);
+                Console.Write("Loading evaluation parameters...");
             } catch {
                 Console.WriteLine("I/O Error.");
                 return;
@@ -1746,6 +1770,7 @@ namespace Othello {
                 Console.WriteLine("error.");
                 Console.WriteLine(ex);
                 ClearHeuristics();
+                return;
             } finally {
                 reader.Close();
             }
@@ -1753,8 +1778,67 @@ namespace Othello {
             // TODO: populate PatternScores based on PatternClassScores, or remove PatternScores
             CalculateWeights();
 
-            Console.WriteLine("maxCount = {0}", HeuristicDataMaxCount);
-            Console.WriteLine("done.");
+            TimeSpan elapsed = DateTime.Now - start;
+            Console.WriteLine("done. maxCount = {0}. Time elapsed = {1:0.000} seconds.", HeuristicDataMaxCount, elapsed.TotalSeconds);
+        }
+
+        #endregion
+
+        #region Playbook Serialization/Deserialization
+
+        public static void ReadPlaybook(string path) {
+            Playbook.Deserialize(path);
+        }
+
+        public static void WritePlaybook(string path) {
+            Playbook.Serialize(path);
+        }
+
+        public static void ClearPlaybook() {
+            Playbook.Clear();
+        }
+
+        public static void PrintPlaybookStats() {
+            Playbook.PrintStats();
+        }
+
+        #endregion
+
+        #region Board Serialization
+
+        public string Serialize() {
+            int data = this.Pass ? 1 : 0;
+            data |= this.Turn << 1;
+
+            return string.Format(
+                CultureInfo.InvariantCulture,
+                "{0}{1:X16}{2:x16}",
+                data,
+                this.BlackBoard,
+                this.WhiteBoard);
+        }
+
+        #endregion
+
+        #region Board Deserialization
+
+        public static OthelloNode Deserialize(string data) {
+            if (data == null || data.Length != 33) {
+                throw new FormatException();
+            }
+
+            int turn = int.Parse(data.Substring(0, 1));
+            bool pass = (turn & 1) == 1;
+            turn >>= 1;
+
+            ulong black = ulong.Parse(data.Substring(1, 16), NumberStyles.HexNumber);
+            ulong white = ulong.Parse(data.Substring(17, 16), NumberStyles.HexNumber);
+
+            return new OthelloNode(
+                turn,
+                turn == BLACK ? black : white,
+                turn == BLACK ? white : black,
+                pass);
         }
 
         #endregion

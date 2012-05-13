@@ -8,6 +8,9 @@ using Solver;
 
 namespace Othello {
     class OthelloProgram {
+        const string ParamsPath = "params.txt";
+        const string PlaybookPath = "playbook.txt";
+
         static void _Main(string[] args) {
             RunTests();
 
@@ -25,7 +28,6 @@ namespace Othello {
             const int selfGames = 100;
             const int adversarialGames = 100;
             const int depth = 2;
-            const string outputPath = "params.txt";
 
             Player<OthelloNode> p0;
             Player<OthelloNode> p1;
@@ -39,20 +41,9 @@ namespace Othello {
             int selfGamesPlayed = 0;
             int adversarialGamesPlayed = 0;
 
-            int paramFilesLoaded = 0;
-            while (true) {
-                Console.WriteLine("Enter name of file to load params from (blank to continue): ");
-                string path = Console.ReadLine();
-                if (string.IsNullOrWhiteSpace(path)) {
-                    break;
-                }
-                OthelloNode.ReadHeuristics(path);
-                paramFilesLoaded++;
-            }
-            if (paramFilesLoaded > 1) {
-                OthelloNode.WriteHeuristics(outputPath);
-            }
-
+            OthelloNode.ReadHeuristics(ParamsPath);
+            OthelloNode.ReadPlaybook(PlaybookPath);
+            
             do {
                 p0 = new MtdFPlayer(1, patternEval, verbose: verbose, randomness: false);
                 p1 = new RandomPlayer();
@@ -62,7 +53,8 @@ namespace Othello {
                 Console.WriteLine("** Played {0} games against random **", randomGamesPlayed);
                 Console.WriteLine();
                 if (randomTraining != TrainingMode.None && randomGames > 0) {
-                    OthelloNode.WriteHeuristics(outputPath);
+                    OthelloNode.WriteHeuristics(ParamsPath);
+                    OthelloNode.WritePlaybook(PlaybookPath);
                 }
             } while (randomGames > 0 && selfGames <= 0 && adversarialGames <= 0);
 
@@ -75,7 +67,8 @@ namespace Othello {
                 Console.WriteLine("** Played {0} games against self **", selfGamesPlayed);
                 Console.WriteLine();
                 if (selfTraining != TrainingMode.None && selfGames > 0) {
-                    OthelloNode.WriteHeuristics(outputPath);
+                    OthelloNode.WriteHeuristics(ParamsPath);
+                    OthelloNode.WritePlaybook(PlaybookPath);
                 }
 
                 p0 = new MtdFPlayer(depth, patternEval, verbose: false, randomness: true, exploring: true);
@@ -86,7 +79,8 @@ namespace Othello {
                 Console.WriteLine("** Played {0} games against adversary **", adversarialGamesPlayed);
                 Console.WriteLine();
                 if (adversarialTraining != TrainingMode.None && adversarialGames > 0) {
-                    OthelloNode.WriteHeuristics(outputPath);
+                    OthelloNode.WriteHeuristics(ParamsPath);
+                    OthelloNode.WritePlaybook(PlaybookPath);
                 }
             }
 
@@ -306,6 +300,7 @@ namespace Othello {
             PrintRandomGame(); // run before loading params.txt
             PrintWeights(); // loads params.txt
             PrintRandomGame(); // run after loading params.txt
+            TestPlaybook();
             PerftTest();
         }
 
@@ -484,15 +479,20 @@ namespace Othello {
         }
 
         private static void PrintWeights() {
-            OthelloNode.ReadHeuristics("params.txt");
+            OthelloNode.ReadHeuristics(ParamsPath);
             OthelloNode.PrintWeights();
         }
 
-        private static void PrintRandomGame() {
-            const int groupSize = 6;
-            Random random = new Random(12345);
-            List<OthelloNode> history = new List<OthelloNode>();
+        // TODO: generalize and factor elsewhere?
+        private static List<OthelloNode> GenerateRandomGame(int? seed = null) {
+            Random random;
+            if (seed == null || !seed.HasValue) {
+                random = new Random();
+            } else {
+                random = new Random(seed.Value);
+            }
 
+            List<OthelloNode> history = new List<OthelloNode>();
             OthelloNode node = new OthelloNode();
             while (!node.IsGameOver) {
                 history.Add(node);
@@ -504,6 +504,14 @@ namespace Othello {
 
                 node = children[random.Next(children.Count)];
             }
+
+            history.Add(node);
+            return history;
+        }
+
+        private static void PrintRandomGame() {
+            const int groupSize = 5;
+            List<OthelloNode> history = GenerateRandomGame(12345);
 
             Console.WriteLine("Random game history:");
             Console.WriteLine(OthelloNode.PrintNodes(groupSize, true, history.ToArray()));
@@ -525,6 +533,21 @@ namespace Othello {
 
             Console.WriteLine("Eval1 scores:");
             PrintScoreHistory(groupSize, OthelloNode.Eval1, history);
+        }
+
+        private static void TestPlaybook() {
+            const string path = "tempPlaybook.txt";
+
+            List<OthelloNode> history = GenerateRandomGame(12345);
+
+            OthelloNode.ClearPlaybook();
+            OthelloNode.TrainPlaybook(history, verbose: true);
+            OthelloNode.PrintPlaybookStats();
+
+            OthelloNode.WritePlaybook(path);
+            OthelloNode.ClearPlaybook();
+            OthelloNode.ReadPlaybook(path);
+            OthelloNode.PrintPlaybookStats();
         }
 
         private static void PrintScoreHistory(int groupSize, Func<OthelloNode, int> getScore, IList<OthelloNode> history) {

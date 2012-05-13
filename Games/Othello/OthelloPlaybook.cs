@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Globalization;
 using System.Diagnostics;
+using System.IO;
 using System.Linq;
 using System.Text;
 
@@ -79,6 +80,237 @@ namespace Othello {
             return false;
         }
 
+        public void Clear() {
+            this.entries.Clear();
+            this.entriesByGameStage.Clear();
+
+            this.Root.Unlink();
+            this.AddEntry(this.Root);
+        }
+
+        #region Serialization
+
+        private const char SerializationDelim = ':';
+        private const char SerializationSubDelim = ',';
+
+        // An index is first assigned to each entry. By convention, the root entry has index
+        // zero. Entries are then written as follows:
+        // <entry index>:(<parent index>(,<parent index>)+)?:(<child index>(,<child index>)+)?:<game state>
+
+        // The file is then organized as follows:
+        // N\n
+        // 0::<child list>:<root state>\n
+        // 1:<parent list>:<child list>:<state>\n
+        // ...
+        // N:<parent list>:<child list>:<state>\n
+        // <EOF>
+        // where N is the number of entries in the playbook.
+
+        public void Serialize(string path) {
+            DateTime start = DateTime.Now;
+            Console.Write("Saving game database...");
+            StreamWriter writer = new StreamWriter(path, false);
+
+            try {
+                List<Entry> entryList = new List<Entry>(this.entries.Count);
+                Dictionary<OthelloNode, int> entryIndices = new Dictionary<OthelloNode, int>(this.entries.Count);
+
+                Stack<Entry> entryStack = new Stack<Entry>();
+                entryStack.Push(this.Root);
+                while (entryStack.Count > 0) {
+                    Entry entry = entryStack.Pop();
+                    entryList.Add(entry);
+                    entryIndices[entry.State] = entryList.Count - 1;
+                    foreach (Entry child in entry.Children) {
+                        if (!entryIndices.ContainsKey(child.State)) {
+                            entryStack.Push(child);
+                        }
+                    }
+                }
+
+                if (entryList.Count != entryIndices.Count ||
+                    entryIndices.Count != this.entries.Count) {
+                    Console.WriteLine();
+                    Console.WriteLine(
+                        "Discrepancy in count: {0},{1},{2} entries,entryList,entryIndices",
+                        this.entries.Count,
+                        entryList.Count,
+                        entryIndices.Count);
+                }
+
+                writer.WriteLine(entryList.Count);
+
+                for (int i = 0; i < entryList.Count; i++) {
+                    Entry entry = entryList[i];
+                    writer.Write(i);
+                    writer.Write(SerializationDelim);
+
+                    bool first = true;
+                    foreach (Entry parent in entry.Parents) {
+                        if (first) {
+                            first = false;
+                        } else {
+                            writer.Write(SerializationSubDelim);
+                        }
+                        writer.Write(entryIndices[parent.State]);
+                    }
+                    writer.Write(SerializationDelim);
+
+                    first = true;
+                    foreach (Entry child in entry.Children) {
+                        if (first) {
+                            first = false;
+                        } else {
+                            writer.Write(SerializationSubDelim);
+                        }
+                        writer.Write(entryIndices[child.State]);
+                    }
+                    writer.Write(SerializationDelim);
+
+                    writer.WriteLine(entry.State.Serialize());
+                }
+
+            } catch (Exception ex) {
+                Console.WriteLine("error.");
+                Console.WriteLine(ex);
+                return;
+            } finally {
+                writer.Close();
+                GC.Collect();
+            }
+
+            TimeSpan elapsed = DateTime.Now - start;
+            Console.WriteLine("done. Time elapsed = {0:0.000} seconds.", elapsed.TotalSeconds);
+        }
+
+        #endregion
+
+        #region Deserialization
+
+        private static List<int> ReadList(string linePart) {
+            if (string.IsNullOrEmpty(linePart)) {
+                return null;
+            }
+
+            return linePart.Split(new char[] { SerializationSubDelim }).Select(int.Parse).ToList();
+        }
+
+        public void Deserialize(string path) {
+            DateTime start = DateTime.Now;
+
+            StreamReader reader;
+            try {
+                if (!File.Exists(path)) {
+                    Console.WriteLine("File not found: {0}", path);
+                }
+
+                reader = new StreamReader(path);
+                Console.Write("Loading playbook...");
+            } catch {
+                Console.WriteLine("I/O Error.");
+                return;
+            }
+
+            try {
+                string line = reader.ReadLine().Trim();
+                int entryCount = int.Parse(line);
+                if (entryCount < 1) {
+                    throw new InvalidDataException("Entry count must be a positive integer.");
+                }
+
+                // First pass - read all the data.
+                OthelloNode[] states = new OthelloNode[entryCount];
+                List<int>[] parents = new List<int>[entryCount];
+                List<int>[] children = new List<int>[entryCount];
+                for (int i = 0; i < entryCount; i++) {
+                    line = reader.ReadLine();
+                    if (line == null) {
+                        throw new InvalidDataException("Unexpected EOF.");
+                    }
+                    line = line.Trim();
+
+                    string[] data = line.Split(new char[] { SerializationDelim });
+                    if (data.Length != 4) {
+                        throw new InvalidDataException(
+                            string.Format("Expected 3 '{0}' on a line but got {1}.", SerializationDelim, data.Length - 1));
+                    }
+
+                    int checkIndex = int.Parse(data[0]);
+                    if (checkIndex != i) {
+                        throw new InvalidDataException(
+                            string.Format("Expected index {0} but got {1}.", i, checkIndex));
+                    }
+
+                    parents[i] = ReadList(data[1]);
+                    children[i] = ReadList(data[2]);
+                    states[i] = OthelloNode.Deserialize(data[3]);
+
+                    if (i == 0) {
+                        if (!states[i].IsIsomorphic(this.Root.State) &&
+                            !this.Contains(states[i])) {
+                            throw new InvalidDataException("Playbook root is not a valid starting state and represents an unknown subtree.");
+                        }
+
+                        if (parents[i] != null && parents[i].Count > 0) {
+                            throw new InvalidDataException("Root node lacks child nodes.");
+                        }
+                    } else {
+                        if (parents[i] == null || parents[i].Count == 0) {
+                            throw new InvalidDataException(
+                                string.Format("Non-root node {0} lacks parent nodes.", i));
+                        }
+                    }
+                }
+
+                line = reader.ReadLine();
+                if (line != null) {
+                    throw new InvalidDataException(
+                        string.Format("Expected EOF after {0} lines.", entryCount + 1));
+                }
+
+                // Second pass - create playbook entries.
+                Entry[] entryArray = new Entry[entryCount];
+                for (int i = 0; i < entryCount; i++) {
+                    Entry entry;
+                    if (!this.TryGetEntry(states[i], out entry)) {
+                        entry = new Entry(this, states[i]);
+                        this.AddEntry(entry);
+                    }
+
+                    entryArray[i] = entry;
+                }
+
+                // Third pass - link parents and children.
+                for (int i = 0; i < entryCount; i++) {
+                    Entry entry = entryArray[i];
+
+                    if (parents[i] != null) {
+                        foreach (int parentIndex in parents[i]) {
+                            entry.AddParent(entryArray[parentIndex]);
+                        }
+                    }
+
+                    if (children[i] != null) {
+                        foreach (int childIndex in children[i]) {
+                            entry.AddChild(entryArray[childIndex]);
+                        }
+                    }
+                }
+            } catch (Exception ex) {
+                Console.WriteLine("error.");
+                Console.WriteLine(ex);
+                return;
+            } finally {
+                reader.Close();
+                GC.Collect();
+            }
+
+            TimeSpan elapsed = DateTime.Now - start;
+            Console.WriteLine("done. Time elapsed = {0:0.000} seconds.", elapsed.TotalSeconds);
+        }
+
+        #endregion
+
         #region Printing Stats
 
         public void PrintStats() {
@@ -87,7 +319,7 @@ namespace Othello {
                 "Othello Playbook with {0:n} entries.",
                 this.entries.Count));
             Console.WriteLine(
-                "Root node: {0} {1}.",
+                "Root node: {0} {1}",
                 this.Root.Children.Count,
                 this.Root.Children.Count == 1 ? "child" : "children");
 
@@ -140,6 +372,7 @@ namespace Othello {
             public readonly List<Entry> Parents = new List<Entry>();
             public readonly List<Entry> Children = new List<Entry>();
 
+            // TODO: add ExactScore to store solved endgames
             public readonly OthelloNode State;
 
             // TODO: add DescendantCount and maybe AncestorCount
@@ -193,6 +426,12 @@ namespace Othello {
                 foreach (Entry entry in this.Parents) {
                     entry.InvalidateCachedScore();
                 }
+            }
+
+            public void Unlink() {
+                this.Parents.Clear();
+                this.Children.Clear();
+                this.InvalidateCachedScore();
             }
 
             public void AddParent(Entry parent) {
