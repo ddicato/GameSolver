@@ -37,7 +37,12 @@ namespace Othello {
             set;
         }
 
-        public bool Exploring {
+        public bool ExploringPatterns {
+            get;
+            set;
+        }
+
+        public bool ExploringPlaybook {
             get;
             set;
         }
@@ -49,7 +54,8 @@ namespace Othello {
             bool moveOrdering = true,
             bool solveEndgame = true,
             bool randomness = false,
-            bool exploring = false) {
+            bool exploringPatterns = false,
+            bool exploringPlaybook = false) {
             if (depth <= 0) {
                 throw new ArgumentOutOfRangeException("must be positive");
             }
@@ -65,7 +71,8 @@ namespace Othello {
             this.MoveOrdering = moveOrdering;
             this.Randomness = randomness;
             this.SolveEndgame = solveEndgame;
-            this.Exploring = exploring;
+            this.ExploringPatterns = exploringPatterns;
+            this.ExploringPlaybook = exploringPlaybook;
         }
 
         private void Initialize() {
@@ -304,25 +311,55 @@ namespace Othello {
                         nodesEvaluated / elapsed.TotalMilliseconds);
                 }
             } else if (this.Randomness) {
-                // TODO: add a way to explore nodes that don't have a lot of known feature or pattern values
                 // Inject some randomness if we're not solving the endgame. Nodes are ordered by score and
-                // have an exponentially decreasing probability of getting picked the worse they are.
+                // have an exponentially decreasing probability of getting picked the worse they are ranked.
                 // If we're attempting to explore less-researched nodes, the probability is skewed accordingly.
                 OrderMovesDescending(metadata);
+
+                // TODO: If every child is in the playbook, use it for evaluation.
+                bool[] recorded = null;
+                int recordedCount = 0;
+                if (this.ExploringPlaybook) {
+                    recorded = new bool[nodes.Count];
+                    for (int i = 0; i < nodes.Count; i++) {
+                        recorded[i] = OthelloNode.PlaybookContains(nodes[i]);
+                        if (recorded[i]) {
+                            recordedCount++;
+                        }
+                    }
+                }
+
                 for (int i = 0; i < metadata.Count; i++) {
                     best = metadata[i].Item1;
                     bestScore = metadata[i].Item2;
 
                     int probabilityReciprocal = 8;
-                    if (this.Exploring) {
+
+                    if (this.ExploringPatterns) {
                         // Decrease likelihood of skipping this node if more of the features are unknown.
-                        double known = OthelloNode.Features.Length - nodes[best].UnknownFeatures();
+                        double known = OthelloNode.PatternClasses.Length - nodes[best].UnknownPatterns();
                         known *= known;
                         known /= OthelloNode.Features.Length * OthelloNode.Features.Length;
                         known = Math.Sqrt(known);
 
                         probabilityReciprocal += (int)(probabilityReciprocal * known);
                     }
+
+                    if (this.ExploringPlaybook) {
+                        double factor;
+                        if (recorded[i]) {
+                            // Increase likelihood of skipping this node if the board is in the playbook and
+                            // few other child nodes are in the playbook.
+                            factor = (recordedCount + nodes.Count) / (2.0 * nodes.Count);
+                        } else {
+                            // Decrease likelihood of skipping this node if the board is not in the playbook
+                            // few other child nodes are not in the playbook.
+                            factor = (2.0 * nodes.Count) / (nodes.Count * 2 - recordedCount);
+                        }
+
+                        probabilityReciprocal = (int)Math.Round(probabilityReciprocal * factor);
+                    }
+                    
                     if (this.random.Next(probabilityReciprocal) > 0) {
                         break;
                     }

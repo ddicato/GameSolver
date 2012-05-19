@@ -23,9 +23,9 @@ namespace Othello {
             const bool verbose = false;
             const TrainingMode randomTraining = TrainingMode.All;
             const TrainingMode selfTraining = TrainingMode.All;
-            const TrainingMode adversarialTraining = TrainingMode.All; // TODO: evaluate relative strength and adjust training mode accordingly
-            const int randomGames = 250;
-            const int selfGames = 250;
+            const TrainingMode adversarialTraining = TrainingMode.All;
+            const int randomGames = 1000;
+            const int selfGames = 500;
             const int adversarialGames = 500;
             const int depth = 3;
 
@@ -52,12 +52,12 @@ namespace Othello {
             } while (randomGames > 0 && selfGames <= 0 && adversarialGames <= 0);
 
             while (true) {
-                p0 = new MtdFPlayer(depth, patternEval, verbose: verbose, randomness: true, exploring: true);
-                p1 = new MtdFPlayer(depth, patternEval, verbose: verbose, randomness: true, exploring: true);
+                p0 = new MtdFPlayer(depth, patternEval, verbose: verbose, randomness: true, exploringPatterns: true, exploringPlaybook: true);
+                p1 = new MtdFPlayer(depth, patternEval, verbose: verbose, randomness: true, exploringPatterns: true, exploringPlaybook: true);
                 PlayGames(p0, p1, selfGames, ref selfGamesPlayed, verbose, training: selfTraining, p1Name: "self");
 
-                p0 = new MtdFPlayer(depth, patternEval, verbose: false, randomness: true, exploring: true);
-                p1 = new MtdFPlayer(depth + 1, OthelloNode.Eval1, verbose: false, randomness: true, exploring: true);
+                p0 = new MtdFPlayer(depth, patternEval, verbose: false, randomness: true, exploringPatterns: true, exploringPlaybook: true);
+                p1 = new MtdFPlayer(depth + 1, OthelloNode.Eval1, verbose: false, randomness: true, exploringPatterns: true, exploringPlaybook: true);
                 PlayGames(p0, p1, adversarialGames, ref adversarialGamesPlayed, verbose, training: adversarialTraining, p1Name: "Adversary+");
             }
 
@@ -282,7 +282,7 @@ namespace Othello {
         //       identical for all board symmetries.
 
         private static void RunTests() {
-            TestBitCount();
+            /*TestBitCount();
             PrintSymmetries();
             PrintPatterns();
             PrintInitialBoard();
@@ -290,7 +290,9 @@ namespace Othello {
             PrintRandomGame(); // run before loading params.txt
             PrintWeights(); // loads params.txt
             PrintRandomGame(); // run after loading params.txt
-            TestPlaybook();
+            TestPlaybook();*/
+
+            OthelloNode.ReadPlaybook(PlaybookPath);
             PerftTest();
         }
 
@@ -331,24 +333,25 @@ namespace Othello {
             228, 584, 6938, 23340
         };
 
-        private static long Perft(OthelloNode node, uint depth, ref int earlyTerminations) {
+        private static long Perft(OthelloNode node, uint depth, ref int earlyTerminations, out long totalBookCount) {
             if (depth == 0) {
+                totalBookCount = OthelloNode.PlaybookContains(node) ? 1 : 0;
                 return 1;
             }
+
+            totalBookCount = 0L;
 
             List<OthelloNode> children = node.GetChildren();
             if (children.Count == 0) {
                 earlyTerminations++;
-                return 0;
-            }
-
-            if (depth == 1) {
-                return children.Count;
+                return 0L;
             }
 
             long total = 0L;
             foreach (OthelloNode child in children) {
-                total += Perft(child, depth - 1, ref earlyTerminations);
+                long bookCount;
+                total += Perft(child, depth - 1, ref earlyTerminations, out bookCount);
+                totalBookCount += bookCount;
             }
 
             return total;
@@ -356,26 +359,35 @@ namespace Othello {
 
         private static void PerftTest() {
             for (uint depth = 1; depth < PerftLeaves.Length; depth++) {
-                Console.WriteLine("Perft test at depth {0}", depth);
+                Console.Write("Perft test at depth {0}...", depth);
 
                 int earlyTerminations = 0;
                 DateTime start = DateTime.Now;
-                long leaves = Perft(new OthelloNode(), depth, ref earlyTerminations);
+                long bookLeaves;
+                long leaves = Perft(new OthelloNode(), depth, ref earlyTerminations, out bookLeaves);
                 TimeSpan elapsed = DateTime.Now - start;
 
                 bool failed = false;
                 if (PerftLeaves[depth - 1] != leaves) {
+                    Console.WriteLine();
                     Console.WriteLine("\t{0} leaves should be {1}", leaves, PerftLeaves[depth - 1]);
                     failed = true;
                 }
                 if (PerftEarlyTerminations[depth - 1] != earlyTerminations) {
+                    Console.WriteLine();
                     Console.WriteLine("\t{0} early terminations should be {1}", earlyTerminations, PerftEarlyTerminations[depth - 1]);
                     failed = true;
                 }
 
-                Console.WriteLine("...done in {0:0.000} sec ({1:0.00} leaves/ms)",
+                Console.WriteLine(
+                    "done in {0:0.000} sec ({1:0.00} leaves/ms)",
                     elapsed.TotalSeconds,
                     leaves / elapsed.TotalMilliseconds);
+                Console.WriteLine(
+                    "{0:n0} of {1:n0} entries in playbook ({2:p1})",
+                    bookLeaves,
+                    leaves,
+                    (double)bookLeaves / leaves);
                 Console.WriteLine();
 
                 if (failed) {
@@ -538,6 +550,8 @@ namespace Othello {
             OthelloNode.ClearPlaybook();
             OthelloNode.ReadPlaybook(path);
             OthelloNode.PrintPlaybookStats();
+
+            File.Delete(path);
         }
 
         private static void PrintScoreHistory(int groupSize, Func<OthelloNode, int> getScore, IList<OthelloNode> history) {

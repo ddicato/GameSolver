@@ -1064,7 +1064,7 @@ namespace Othello {
         public static readonly ulong[] Corner52Ccw;
 
         // TODO: rename these? (also Patterns and PatternScores). Search for "PatternSets" and "pattern sets" and delete.
-        private static readonly ulong[][] PatternClasses;
+        public static readonly ulong[][] PatternClasses;
         private static readonly Dictionary<int, Dictionary<ulong, Dictionary<ulong, HeuristicData>>>[] PatternClassScores;
         private static readonly double[,] PatternClassWeights;
 
@@ -1819,6 +1819,10 @@ namespace Othello {
             get {
                 return Playbook.Count;
             }
+        }
+
+        public static bool PlaybookContains(OthelloNode node) {
+            return Playbook.Contains(node);
         }
 
         #endregion
