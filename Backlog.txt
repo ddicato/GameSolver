@@ -1,0 +1,25 @@
+- Add some move ordering to AlphaBetaEndgame and MtdFEndgame.
+- refactor depth limitation in playbook
+- refactor iterative deepening into static class
+- add leaf node construct, or node types: Node, ExploredLeaf, UnexploredLeaf
+- TrainingMode: make flags type or 2. One for win/loss/draw, and one for playbook/patterns/heuristics/others
+- Fix redundant endgame solve when adding to the playbook
+- Remove TODOs from code and add to this document
+- Each player can load a different params and playbook file, for comparison and possibly coevolutionary learning.
+- Add endgame test suite
+- search code: instead of initializing with (max possible turns) * 2 + 1, dynamically expand the node cache
+- Read game params, e.g. randomGames/selfGames/adversarialGames, from a file
+- MtdFPlayer: do the move ordering after 
+
+Below a certain depth, TrainingPlayer searches based on number of games played
+PlaybookPlayer searches based on:
+1. If a positive score exists, choose the node with the highest
+   1a. If there is any tie, choose the least-explored
+2. If there are any unexplored nodes, choose the one with the highest heuristic score
+3. Among the negative nodes, choose least-explored node below a certain exploration threshold
+4. If no nodes are below the exploration threshold, choose the highest score
+
+
+Large:
+Build a playbook visualizer.
+

@@ -24,10 +24,10 @@ namespace Othello {
             const TrainingMode randomTraining = TrainingMode.All;
             const TrainingMode selfTraining = TrainingMode.All;
             const TrainingMode adversarialTraining = TrainingMode.All;
-            const int randomGames = 1000;
-            const int selfGames = 500;
-            const int adversarialGames = 500;
-            const int depth = 3;
+            const int randomGames = 200;
+            const int selfGames = 200;
+            const int adversarialGames = 200;
+            const int depth = 4;
 
             Player<OthelloNode> p0;
             Player<OthelloNode> p1;
@@ -47,18 +47,18 @@ namespace Othello {
             
             do {
                 p0 = new MtdFPlayer(1, patternEval, verbose: verbose, randomness: false);
-                p1 = new RandomPlayer();
+                p1 = new RandomPlayer() { Verbose = verbose };
                 PlayGames(p0, p1, randomGames, ref randomGamesPlayed, verbose, training: randomTraining, p1Name: "RandomPlayer");
             } while (randomGames > 0 && selfGames <= 0 && adversarialGames <= 0);
 
             while (true) {
                 p0 = new MtdFPlayer(depth, patternEval, verbose: verbose, randomness: true, exploringPatterns: true, exploringPlaybook: true);
                 p1 = new MtdFPlayer(depth, patternEval, verbose: verbose, randomness: true, exploringPatterns: true, exploringPlaybook: true);
-                PlayGames(p0, p1, selfGames, ref selfGamesPlayed, verbose, training: selfTraining, p1Name: "self");
+                PlayGames(p0, p1, selfGames, ref selfGamesPlayed, verbose: verbose, training: selfTraining, p1Name: "self");
 
                 p0 = new MtdFPlayer(depth, patternEval, verbose: false, randomness: true, exploringPatterns: true, exploringPlaybook: true);
                 p1 = new MtdFPlayer(depth + 1, OthelloNode.Eval1, verbose: false, randomness: true, exploringPatterns: true, exploringPlaybook: true);
-                PlayGames(p0, p1, adversarialGames, ref adversarialGamesPlayed, verbose, training: adversarialTraining, p1Name: "Adversary+");
+                PlayGames(p0, p1, adversarialGames, ref adversarialGamesPlayed, verbose: verbose, training: adversarialTraining, p1Name: "Adversary+");
             }
 
             Console.WriteLine("Press Enter to exit.");
@@ -109,7 +109,7 @@ namespace Othello {
                 int playbookCount = OthelloNode.PlaybookCount;
 
                 int result;
-                List<OthelloNode> gameHistory = new List<OthelloNode>();
+                var gameHistory = new List<Tuple<OthelloNode, int?>>();
                 if ((i & 1) == 0) {
                     result = GameLoop(p0, p0Name, p1, p1Name, gameHistory, verbose, training);
                     if (result > 0 && (training & TrainingMode.Win) != TrainingMode.None ||
@@ -189,10 +189,11 @@ namespace Othello {
             gamesPlayed += games;
 
             if (training != TrainingMode.None && games > 0) {
-                OthelloNode.WritePlaybook(PlaybookPath);
                 OthelloNode.CalculateHeuristics();
                 OthelloNode.CalculateWeights();
+                OthelloNode.WritePlaybook(PlaybookPath);
                 OthelloNode.WriteHeuristics(ParamsPath);
+                OthelloNode.PrintPlaybookStats();
 
                 Console.WriteLine();
             }
@@ -206,7 +207,7 @@ namespace Othello {
             string blackName,
             Player<OthelloNode> white,
             string whiteName,
-            List<OthelloNode> gameHistory,
+            List<Tuple<OthelloNode, int?>> gameHistory,
             bool verbose = false,
             TrainingMode training = TrainingMode.All) {
             OthelloNode board = new OthelloNode();
@@ -216,7 +217,7 @@ namespace Othello {
                 training = TrainingMode.None;
             } else {
                 gameHistory.Clear();
-                gameHistory.Add(board);
+                gameHistory.Add(new Tuple<OthelloNode, int?>(board, null));
             }
 
             while (!board.IsGameOver) {
@@ -249,7 +250,8 @@ namespace Othello {
 
                 board = children[index];
                 if (training != TrainingMode.None) {
-                    gameHistory.Add(board);
+                    // TODO: add solved endgame score
+                    gameHistory.Add(new Tuple<OthelloNode, int?>(board, null));
                 }
             }
 
@@ -486,7 +488,7 @@ namespace Othello {
         }
 
         // TODO: generalize and factor elsewhere?
-        private static List<OthelloNode> GenerateRandomGame(int? seed = null) {
+        private static List<Tuple<OthelloNode, int?>> GenerateRandomGame(int? seed = null) {
             Random random;
             if (seed == null || !seed.HasValue) {
                 random = new Random();
@@ -494,10 +496,10 @@ namespace Othello {
                 random = new Random(seed.Value);
             }
 
-            List<OthelloNode> history = new List<OthelloNode>();
+            var history = new List<Tuple<OthelloNode, int?>>();
             OthelloNode node = new OthelloNode();
             while (!node.IsGameOver) {
-                history.Add(node);
+                history.Add(new Tuple<OthelloNode, int?>(node, null));
                 List<OthelloNode> children = node.GetChildren();
                 if (children == null || children.Count == 0) {
                     Console.WriteLine("Error: node.IsGameOver is false but GetChildren returns no children.");
@@ -507,40 +509,41 @@ namespace Othello {
                 node = children[random.Next(children.Count)];
             }
 
-            history.Add(node);
+            history.Add(new Tuple<OthelloNode, int?>(node, null));
             return history;
         }
 
         private static void PrintRandomGame() {
             const int groupSize = 5;
-            List<OthelloNode> history = GenerateRandomGame(12345);
+            var history = GenerateRandomGame(12345);
+            OthelloNode[] stateHistory = history.Select(t => t.Item1).ToArray();
 
             Console.WriteLine("Random game history:");
-            Console.WriteLine(OthelloNode.PrintNodes(groupSize, true, history.ToArray()));
+            Console.WriteLine(OthelloNode.PrintNodes(groupSize, true, stateHistory));
 
             Console.WriteLine("Pattern scores:");
-            PrintScoreHistory(groupSize, board => board.PatternScore(), history);
+            PrintScoreHistory(groupSize, board => board.PatternScore(), stateHistory);
 
             Console.WriteLine("Pattern Scores (reference):");
-            PrintScoreHistory(groupSize, board => board.PatternScoreSlow(), history);
+            PrintScoreHistory(groupSize, board => board.PatternScoreSlow(), stateHistory);
 
             Console.WriteLine("Pattern Score percentages:");
             PrintScoreHistory(
                 groupSize,
                 board => (int)Math.Round(board.PatternScoreSlow() * 100.0 / board.PatternScore()),
-                history);
+                stateHistory);
 
             Console.WriteLine("Feature scores:");
-            PrintScoreHistory(groupSize, board => board.FeatureScore(), history);
+            PrintScoreHistory(groupSize, board => board.FeatureScore(), stateHistory);
 
             Console.WriteLine("Eval1 scores:");
-            PrintScoreHistory(groupSize, OthelloNode.Eval1, history);
+            PrintScoreHistory(groupSize, OthelloNode.Eval1, stateHistory);
         }
 
         private static void TestPlaybook() {
             const string path = "tempPlaybook.txt";
 
-            List<OthelloNode> history = GenerateRandomGame(12345);
+            var history = GenerateRandomGame(12345);
 
             OthelloNode.ClearPlaybook();
             OthelloNode.TrainPlaybook(history, verbose: true);

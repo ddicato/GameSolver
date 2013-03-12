@@ -5,7 +5,7 @@
         DataContext="{Binding RelativeSource={RelativeSource Self}}"
         Title="OthelloWindow"
         Height="425"
-        Width="500">
+        Width="550">
     <Window.Resources>
         <ResourceDictionary>
             <Style TargetType="Rectangle">
@@ -394,9 +394,8 @@
             <CheckBox IsChecked="{Binding Randomness}">
                 Randomness
             </CheckBox>
-            <CheckBox IsChecked="{Binding Training}"
-                      IsEnabled="False">
-                Training
+            <CheckBox IsChecked="{Binding Training}">
+                _Training
             </CheckBox>
 
             <Grid>
@@ -439,6 +438,41 @@
             <CheckBox IsChecked="{Binding AiSwap}">
                 Swap AIs
             </CheckBox>
+
+            <Separator />
+
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <Button x:Name="SaveParamsButton"
+                        Grid.Row="0"
+                        Grid.Column="0"
+                        Click="SaveParamsButton_Click">
+                    Save _Params
+                </Button>
+
+                <Button x:Name="RefreshParamsButton"
+                        Grid.Row="0"
+                        Grid.Column="1"
+                        Click="RefreshParamsButton_Click">
+                    Re_fresh Params
+                </Button>
+
+                <Button x:Name="SavePlaybookButton"
+                        Grid.Row="1"
+                        Grid.Column="0"
+                        Grid.ColumnSpan="2"
+                        Click="SavePlaybookButton_Click">
+                        Save Play_book
+                </Button>
+            </Grid>
         </StackPanel>
     </Grid>
 </Window>

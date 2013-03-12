@@ -245,11 +245,11 @@ namespace Gridlock {
 
         #region Node Members
 
-        public override List<GridNode> GetChildren() {
-            List<GridNode> children = new List<GridNode>();
+        public override void GetChildren(List<GridNode> children) {
+            children.Clear();
 
             if (IsGameOver) {
-                return children;
+                return;
             }
 
             // Find the possible moves of each block
@@ -275,7 +275,7 @@ namespace Gridlock {
                 }
             }
 
-            return children;
+            return;
         }
         
         public override bool IsGameOver {

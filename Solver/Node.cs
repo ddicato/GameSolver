@@ -6,7 +6,15 @@ using System.Text;
 namespace Solver {
     public abstract class Node<Self> : IEquatable<Self> where Self : Node<Self> {
         public abstract bool IsGameOver { get; }
-        public abstract List<Self> GetChildren();
+
+        public List<Self> GetChildren() {
+            var children = new List<Self>();
+            this.GetChildren(children);
+
+            return children;
+        }
+
+        public abstract void GetChildren(List<Self> children);
 
         public abstract bool Equals(Self other);
         public abstract override int GetHashCode();

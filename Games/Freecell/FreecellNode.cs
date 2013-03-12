@@ -564,8 +564,8 @@ namespace Freecell {
 
         #region Node Members
 
-        public override List<FreecellNode> GetChildren() {
-            var res = new List<FreecellNode>();
+        public override void GetChildren(List<FreecellNode> children) {
+            children.Clear();
 
             // Always legal: c -> empty c
             if (_columns.Count < COLUMNS) {
@@ -582,7 +582,7 @@ namespace Freecell {
                     node._columns.Add(new Column(c.Pop(ref c)));
                     node._columns.Add(c);
                     node.Cleanup();
-                    res.Add(node);
+                    children.Add(node);
                 }
             }
 
@@ -599,7 +599,7 @@ namespace Freecell {
                         node._columns.Add(c);
                     }
                     node.Cleanup();
-                    res.Add(node);
+                    children.Add(node);
                 }
             }
 
@@ -610,7 +610,7 @@ namespace Freecell {
                     node._cells.Remove(card);
                     node._columns.Add(new Column(card));
                     node.Cleanup();
-                    res.Add(node);
+                    children.Add(node);
                 }
             }
 
@@ -627,7 +627,7 @@ namespace Freecell {
                     }
                     node._home[card.Suit]++;
                     node.Cleanup();
-                    res.Add(node);
+                    children.Add(node);
                 }
             }
 
@@ -640,7 +640,7 @@ namespace Freecell {
                     node._cells.Remove(card);
                     node._home[card.Suit]++;
                     node.Cleanup();
-                    res.Add(node);
+                    children.Add(node);
                 }
             }
 
@@ -663,7 +663,7 @@ namespace Freecell {
                     }
                     node._columns.Add(to.Push(from[0]));
                     node.Cleanup();
-                    res.Add(node);
+                    children.Add(node);
                 }
             }
 
@@ -681,7 +681,7 @@ namespace Freecell {
                     node._columns.Remove(column);
                     node._columns.Add(column.Push(card));
                     node.Cleanup();
-                    res.Add(node);
+                    children.Add(node);
                 }
             }
 
@@ -708,7 +708,7 @@ namespace Freecell {
             //  - evaluate a board and come up with missions, e.g. "uncover this ace" or
             //    "free up 2 more cells"
 
-            return res;
+            return;
         }
 
         /// <summary>

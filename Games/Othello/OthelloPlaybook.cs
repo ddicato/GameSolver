@@ -12,6 +12,8 @@ namespace Othello {
     public class OthelloPlaybook : IEnumerable<KeyValuePair<OthelloNode, int>> {
         public readonly Entry Root;
 
+        public readonly MtdFPlayer Player = new MtdFPlayer(SearchUtils.EndgameDepth * 2, OthelloNode.Eval1);
+
         private readonly Dictionary<OthelloNode, Entry> entries = new Dictionary<OthelloNode, Entry>();
         
         // TODO: create type for generalized game stage
@@ -44,24 +46,41 @@ namespace Othello {
             set.Add(entry);
         }
 
-        public void AddGame(IList<OthelloNode> history) {
+        /// <summary>
+        /// Adds the given game history to the playbook.
+        /// </summary>
+        /// <param name="history">
+        /// A sequence of game states in order. The second element in the tuple is the solved endgame
+        /// score, if one was calculated.
+        /// </param>
+        public void AddGame(IList<Tuple<OthelloNode, int?>> history) {
             if (history == null) {
                 throw new ArgumentNullException();
             }
 
-            if (history.Count == 0 ||
-                !this.Root.State.Equals(history[0]) ||
-                !history[history.Count - 1].IsGameOver) {
-                    throw new ArgumentException();
+            if (history.Count == 0) {
+                throw new ArgumentException();
             }
 
-            Debug.Assert(this.Contains(history[0]));
+            if (!this.Root.State.Equals(history[0].Item1)) {
+                Console.WriteLine(
+                    OthelloNode.PrintNodes(2, true, this.Root.State, history[0].Item1, history[history.Count - 1].Item1));
+                throw new ArgumentException();
+            }
+
+            if (!history[history.Count - 1].Item1.IsGameOver) {
+                Console.WriteLine(
+                    OthelloNode.PrintNodes(2, true, this.Root.State, history[history.Count - 1].Item1));
+                throw new ArgumentException();
+            }
+
+            Debug.Assert(this.Contains(history[0].Item1));
 
             Entry parent = this.Root;
             for (int i = 1; i < history.Count; i++) {
                 Entry current;
-                if (!this.TryGetEntry(history[i], out current)) {
-                    current = new Entry(this, history[i]);
+                if (!this.TryGetEntry(history[i].Item1, out current)) {
+                    current = new Entry(this, history[i].Item1, history[i].Item2);
                     this.AddEntry(current);
                 }
 
@@ -69,6 +88,14 @@ namespace Othello {
                 parent.AddChild(current);
 
                 parent = current;
+
+                // The first game we encounter with a SolvedScore can be a leaf node, so
+                // there is no need to continue adding children.
+                // TODO: implement logic that propagates SolvedScore up and removes children
+                //       if all children have a SolvedScore.
+                if (current.SolvedScore != null) {
+                    break;
+                }
             }
         }
 
@@ -114,14 +141,15 @@ namespace Othello {
 
         // An index is first assigned to each entry. By convention, the root entry has index
         // zero. Entries are then written as follows:
-        // <entry index>:(<parent index>(,<parent index>)+)?:(<child index>(,<child index>)+)?:<game state>
+        // <entry index>:(<parent index>(,<parent index>)+)?:(<child index>(,<child index>)+)?:<game state>:<solved score>?
+        // The solved score is an integer from -64 to 64, or "null" if not calculated.
 
         // The file is then organized as follows:
         // N\n
-        // 0::<child list>:<root state>\n
-        // 1:<parent list>:<child list>:<state>\n
+        // 0::<child list>:<root state>:\n
+        // 1:<parent list>:<child list>:<state>:<solved score>?\n
         // ...
-        // N:<parent list>:<child list>:<state>\n
+        // N:<parent list>:<child list>:<state>:<solved score>?\n
         // <EOF>
         // where N is the number of entries in the playbook.
 
@@ -186,7 +214,13 @@ namespace Othello {
                     }
                     writer.Write(SerializationDelim);
 
-                    writer.WriteLine(entry.State.Serialize());
+                    writer.Write(entry.State.Serialize());
+                    writer.Write(SerializationDelim);
+
+                    if (entry.SolvedScore != null) {
+                        writer.Write(entry.SolvedScore);
+                    }
+                    writer.WriteLine();
                 }
             } catch (Exception ex) {
                 Console.WriteLine("error.");
@@ -223,11 +257,14 @@ namespace Othello {
                 }
 
                 reader = new StreamReader(path);
-                Console.Write("Loading game database...");
+                Console.Write("Loading game database... ");
             } catch {
                 Console.WriteLine("I/O Error.");
                 return;
             }
+
+            int consoleLeft = Console.CursorLeft;
+            int consoleTop = Console.CursorTop;
 
             try {
                 string line = reader.ReadLine().Trim();
@@ -240,7 +277,13 @@ namespace Othello {
                 OthelloNode[] states = new OthelloNode[entryCount];
                 List<int>[] parents = new List<int>[entryCount];
                 List<int>[] children = new List<int>[entryCount];
+                Dictionary<int, int?> solvedScores = new Dictionary<int, int?>();
                 for (int i = 0; i < entryCount; i++) {
+                    if (i % (entryCount / 100) == 0) {
+                        Console.SetCursorPosition(consoleLeft, consoleTop);
+                        Console.Write("{0:#0}%", 100.0 / entryCount * i);
+                    }
+
                     line = reader.ReadLine();
                     if (line == null) {
                         throw new InvalidDataException("Unexpected EOF.");
@@ -248,9 +291,9 @@ namespace Othello {
                     line = line.Trim();
 
                     string[] data = line.Split(new char[] { SerializationDelim });
-                    if (data.Length != 4) {
+                    if (data.Length != 5) {
                         throw new InvalidDataException(
-                            string.Format("Expected 3 '{0}' on a line but got {1}.", SerializationDelim, data.Length - 1));
+                            string.Format("Expected 4 '{0}' on a line but got {1}.", SerializationDelim, data.Length - 1));
                     }
 
                     int checkIndex = int.Parse(data[0]);
@@ -262,6 +305,9 @@ namespace Othello {
                     parents[i] = ReadList(data[1]);
                     children[i] = ReadList(data[2]);
                     states[i] = OthelloNode.Deserialize(data[3]);
+                    if (!string.IsNullOrEmpty(data[4])) {
+                        solvedScores[i] = int.Parse(data[4]);
+                    }
 
                     if (i == 0) {
                         if (!states[i].IsIsomorphic(this.Root.State) &&
@@ -286,40 +332,75 @@ namespace Othello {
                         string.Format("Expected EOF after {0} lines.", entryCount + 1));
                 }
 
-                Console.Write(" .");
+                Console.Write(" | ");
+                consoleLeft = Console.CursorLeft;
+                consoleTop = Console.CursorTop;
 
                 // Second pass - create playbook entries.
                 Entry[] entryArray = new Entry[entryCount];
                 for (int i = 0; i < entryCount; i++) {
+                    if (i % (entryCount / 100) == 0) {
+                        Console.SetCursorPosition(consoleLeft, consoleTop);
+                        Console.Write("{0:#0}%", 100.0 / entryCount * i);
+                    }
+
+                    // Only add the entry if it has enough empties. Otherwise, we're so close to the endgame
+                    // that it is worthless to store the subtree.
+                    if (states[i].EmptySquareCount < SearchUtils.EndgameDepth) {
+                        continue;
+                    }
+
                     Entry entry;
                     if (!this.TryGetEntry(states[i], out entry)) {
                         entry = new Entry(this, states[i]);
                         this.AddEntry(entry);
                     }
 
+                    int? solvedScore = null;
+                    if (solvedScores.TryGetValue(i, out solvedScore)) {
+                        Debug.Assert(solvedScore != null);
+                        Debug.Assert(entry.SolvedScore == null || entry.SolvedScore.Value == solvedScore.Value);
+                        entry.SolvedScore = solvedScore.Value;
+                    }
+
                     entryArray[i] = entry;
                 }
 
-                Console.Write(" .");
+                Console.Write(" | ");
+                consoleLeft = Console.CursorLeft;
+                consoleTop = Console.CursorTop;
 
                 // Third pass - link parents and children.
                 for (int i = 0; i < entryCount; i++) {
+                    if (i % (entryCount / 100) == 0) {
+                        Console.SetCursorPosition(consoleLeft, consoleTop);
+                        Console.Write("{0:#0}%", 100.0 / entryCount * i);
+                    }
+
                     Entry entry = entryArray[i];
+
+                    if (entry == null) {
+                        continue;
+                    }
 
                     if (parents[i] != null) {
                         foreach (int parentIndex in parents[i]) {
+                            Debug.Assert(entryArray[parentIndex] != null);
                             entry.AddParent(entryArray[parentIndex]);
                         }
                     }
 
                     if (children[i] != null) {
                         foreach (int childIndex in children[i]) {
-                            entry.AddChild(entryArray[childIndex]);
+                            Entry child = entryArray[childIndex];
+                            if (child != null) {
+                                entry.AddChild(child);
+                            }
                         }
                     }
                 }
 
-                Console.Write(" .");
+                Console.Write(" | ");
             } catch (Exception ex) {
                 Console.WriteLine("error.");
                 Console.WriteLine(ex);
@@ -331,7 +412,9 @@ namespace Othello {
 
             TimeSpan elapsed = DateTime.Now - start;
             Console.WriteLine(
-                "done. {0:n0} entries. Time elapsed = {1:0.000} seconds.",
+                "done.");
+            Console.WriteLine(
+                "{0:n0} entries. Time elapsed = {1:0.000} seconds.",
                 this.entries.Count,
                 elapsed.TotalSeconds);
         }
@@ -374,12 +457,24 @@ namespace Othello {
             List<int> gameStages = this.entriesByGameStage.Keys.ToList();
             gameStages.Sort();
             int totalCount = 0;
+            int totalSolvedScores = 0;
             foreach (int gameStage in gameStages) {
                 int count = this.entriesByGameStage[gameStage].Count;
+                int solvedScores = this.entriesByGameStage[gameStage].Count(e => e.SolvedScore != null);
                 totalCount += count;
-                Console.WriteLine("{0:##} {1:n0}", gameStage, count);
+                totalSolvedScores += solvedScores;
+                Console.WriteLine(
+                    "{0:##} {1:n0} \tSolvedScore: {2:n0} ({3:#0.00}%)",
+                    gameStage,
+                    count,
+                    solvedScores,
+                    100.0 / count * solvedScores);
             }
-            Console.WriteLine("Total = {0:n0}", totalCount);
+            Console.WriteLine(
+                "Total = {0:n0} SolvedScore: {1:n0} ({2:#0.00}%)",
+                totalCount,
+                totalSolvedScores,
+                100.0 / totalCount * totalSolvedScores);
 
             Console.WriteLine();
         }
@@ -416,7 +511,7 @@ namespace Othello {
             // TODO: add DescendantCount and maybe AncestorCount
             private int? score = null;
 
-            public Entry(OthelloPlaybook playbook, OthelloNode state) {
+            public Entry(OthelloPlaybook playbook, OthelloNode state, int? solvedScore = null) {
                 if (playbook == null || state == null) {
                     throw new ArgumentNullException();
                 }
@@ -427,13 +522,26 @@ namespace Othello {
 
             public int Score {
                 get {
+                    if (this.SolvedScore != null) {
+                        Debug.Assert(this.SolvedScore >= -64 && this.SolvedScore <= 64);
+
+                        return this.SolvedScore.Value;
+                    }
+
                     if (this.score == null) {
                         if (this.Children.Count == 0) {
                             // TODO: If game isn't over, perform some kind of evaluation. Or, discount this
                             //       node completely by returning a bogus value
-                            Debug.Assert(this.State.IsGameOver);
+                            Debug.Assert(this.State.IsGameOver || this.State.EmptySquareCount == SearchUtils.EndgameDepth);
 
-                            this.score = this.State.PieceCountSpread();
+                            this.score = this.SolvedScore = this.State.PieceCountSpread();
+                        } else if (this.State.EmptySquareCount <= SearchUtils.EndgameDepth) {
+                            // We can calculate the endgame score exactly.
+                            Console.Write("* ");
+                            // TODO: replace Playbook.Player with static calls to MtdF search. Then, get rid of
+                            //       GetScore() and the out param
+                            this.SolvedScore = this.playbook.Player.GetScore(this.State);
+                            return this.SolvedScore.Value;
                         } else {
                             // The best way to estimate the score of this board is to do a negamax search
                             // within the space of recorded game states.
@@ -445,12 +553,26 @@ namespace Othello {
                 }
             }
 
-            // TODO
-            /*public int? SolvedScore {
-                get;
-                private set;
-            }*/
+#if DEBUG
+            private int? solvedScore;
+            public int? SolvedScore {
+                get {
+                    return this.solvedScore;
+                }
 
+                internal set {
+                    Debug.Assert(value >= -64 && value <= 64);
+                    this.solvedScore = value;
+                }
+            }
+#else
+            public int? SolvedScore {
+                get;
+                internal set;
+            }
+#endif
+
+            // TODO: account for symmetry? use GetDistinctChildren()
             public int UnexploredChildren {
                 get {
                     int result = this.State.GetChildren().Count - this.Children.Count;

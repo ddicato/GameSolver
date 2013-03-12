@@ -661,15 +661,7 @@ namespace Othello {
             return unchecked((int)count);
         }
 
-        public override List<OthelloNode> GetChildren() {
-            var children = new List<OthelloNode>();
-            this.GetChildren(children);
-
-            return children;
-        }
-
-        // TODO: make this part of node API, and implement GetChildren() in the abstract class
-        public void GetChildren(List<OthelloNode> children) {
+        public override void GetChildren(List<OthelloNode> children) {
             children.Clear();
 
             ulong self = this.board[this.turn];
@@ -1339,7 +1331,15 @@ namespace Othello {
 
         private static OthelloPlaybook Playbook;
 
-        public static void TrainPlaybook(List<OthelloNode> gameHistory, bool verbose = false) {
+        /// <summary>
+        /// Adds the given game history to the playbook.
+        /// </summary>
+        /// <param name="gameHistory">
+        /// A list of board states and, if available, solved endgame scores that represents the game
+        /// from beginning to end.
+        /// </param>
+        /// <param name="verbose">Whether to print status information.</param>
+        public static void TrainPlaybook(List<Tuple<OthelloNode, int?>> gameHistory, bool verbose = false) {
             DateTime start = DateTime.Now;
             TimeSpan elapsed;
 
@@ -1380,12 +1380,21 @@ namespace Othello {
 
         public static void CalculateHeuristics() {
             DateTime start = DateTime.Now;
-            Console.Write("Calculating feature values...");
+            Console.Write("Calculating feature values... ");
+            int consoleLeft = Console.CursorLeft;
+            int consoleTop = Console.CursorTop;
 
             ClearHeuristics();
 
+            int i = 0;
             foreach (KeyValuePair<OthelloNode, int> kvp in Playbook) {
+                if (i % (Playbook.Count / 200) == 0) {
+                    Console.SetCursorPosition(consoleLeft, consoleTop);
+                    Console.Write("{0:#0.00}%", 100.0 / Playbook.Count * i);
+                }
+
                 TrainSingle(kvp.Key, kvp.Value * ScoreMultiplier);
+                i++;
             }
 
             TimeSpan elapsed = DateTime.Now - start;

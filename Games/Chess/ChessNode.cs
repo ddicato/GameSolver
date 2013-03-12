@@ -232,7 +232,7 @@ namespace Chess {
             get { throw new NotImplementedException(); }
         }
 
-        public override List<ChessNode> GetChildren() {
+        public override void GetChildren(List<ChessNode> children) {
             throw new NotImplementedException();
         }
 

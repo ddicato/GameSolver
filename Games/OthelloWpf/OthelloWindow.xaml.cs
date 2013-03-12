@@ -43,6 +43,7 @@ namespace OthelloWpf {
         private Thread computationThread;
 
         public const string ParamsPath = "params.txt";
+        public const string PlaybookPath = "playbook.txt";
 
         public OthelloWindow() {
             InitializeComponent();
@@ -57,7 +58,9 @@ namespace OthelloWpf {
                 }
             }
 
+            OthelloNode.ReadPlaybook(PlaybookPath);
             OthelloNode.ReadHeuristics(ParamsPath);
+            OthelloNode.PrintPlaybookStats();
         }
 
         #region Dependency Properties
@@ -169,8 +172,11 @@ namespace OthelloWpf {
             this.Dispatcher.Invoke(new Action(this.InitPlayers));
 
             if (this.board != null) {
+                var history = new List<Tuple<OthelloNode, int?>>();
                 List<OthelloNode> children = new List<OthelloNode>();
                 while (!this.board.IsGameOver) {
+                    history.Add(new Tuple<OthelloNode, int?>(this.board, null));
+
                     const int monteCarloIters = 0;
                     if (monteCarloIters > 0) {
                         Console.Write("Monte-carlo score: ");
@@ -198,7 +204,14 @@ namespace OthelloWpf {
                     this.UpdateBoard();
                 }
 
-                board.PrintScore();
+                history.Add(new Tuple<OthelloNode, int?>(this.board, null));
+                this.board.PrintScore();
+
+                this.Dispatcher.BeginInvoke(new Action(delegate() {
+                    if (this.Training) {
+                        OthelloNode.TrainPlaybook(history);
+                    }
+                }));
             }
         }
 
@@ -343,6 +356,19 @@ namespace OthelloWpf {
 
                 Thread.Sleep(50);
             }
+        }
+
+        private void RefreshParamsButton_Click(object sender, RoutedEventArgs e) {
+            OthelloNode.CalculateHeuristics();
+            OthelloNode.CalculateWeights();
+        }
+
+        private void SaveParamsButton_Click(object sender, RoutedEventArgs e) {
+            OthelloNode.WriteHeuristics(ParamsPath);
+        }
+
+        private void SavePlaybookButton_Click(object sender, RoutedEventArgs e) {
+            OthelloNode.WritePlaybook(PlaybookPath);
         }
     }
 }
