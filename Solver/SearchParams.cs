@@ -8,11 +8,7 @@ namespace Solver {
         protected SearchParams() {
             this.NodeCache = new List<List<Node>>();
             this.Table = new TranspositionTable2<Node>();
-        }
-
-        protected SearchParams(int nodeCacheSize)
-            : this() {
-            this.Initialize(nodeCacheSize);
+            this.Initialize(12);
         }
 
         public List<List<Node>> NodeCache { get; private set; }

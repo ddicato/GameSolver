@@ -21,12 +21,14 @@ namespace Othello {
         // TODO: verbosity levels: Board, Turn, Game, GameSet, Output, None
         static void Main(string[] args) {
             const bool verbose = false;
-            const TrainingMode randomTraining = TrainingMode.All;
+            const bool memoize = true;
+            const TrainingMode randomTraining = TrainingMode.LossDraw;
             const TrainingMode selfTraining = TrainingMode.All;
             const TrainingMode adversarialTraining = TrainingMode.All;
-            const int randomGames = 200;
-            const int selfGames = 200;
-            const int adversarialGames = 200;
+            const bool continueRandomGames = true;
+            const int randomGames = 100;
+            const int selfGames = 100;
+            const int adversarialGames = 250;
             const int depth = 4;
 
             Player<OthelloNode> p0;
@@ -48,17 +50,39 @@ namespace Othello {
             do {
                 p0 = new MtdFPlayer(1, patternEval, verbose: verbose, randomness: false);
                 p1 = new RandomPlayer() { Verbose = verbose };
+                if (memoize) {
+                    p0 = new MemoPlayer(OthelloNode.Playbook, p0) { Verbose = verbose };
+                    p1 = new MemoPlayer(OthelloNode.Playbook, p1) { Verbose = verbose };
+                }
                 PlayGames(p0, p1, randomGames, ref randomGamesPlayed, verbose, training: randomTraining, p1Name: "RandomPlayer");
             } while (randomGames > 0 && selfGames <= 0 && adversarialGames <= 0);
 
             while (true) {
-                p0 = new MtdFPlayer(depth, patternEval, verbose: verbose, randomness: true, exploringPatterns: true, exploringPlaybook: true);
-                p1 = new MtdFPlayer(depth, patternEval, verbose: verbose, randomness: true, exploringPatterns: true, exploringPlaybook: true);
+                p0 = new MtdFPlayer(depth, patternEval, verbose: verbose, randomness: !memoize, exploringPatterns: true, exploringPlaybook: true);
+                p1 = new MtdFPlayer(depth, patternEval, verbose: verbose, randomness: !memoize, exploringPatterns: true, exploringPlaybook: true);
+                if (memoize) {
+                    p0 = new MemoPlayer(OthelloNode.Playbook, p0) { Verbose = verbose };
+                    p1 = new MemoPlayer(OthelloNode.Playbook, p1) { Verbose = verbose };
+                }
                 PlayGames(p0, p1, selfGames, ref selfGamesPlayed, verbose: verbose, training: selfTraining, p1Name: "self");
 
-                p0 = new MtdFPlayer(depth, patternEval, verbose: false, randomness: true, exploringPatterns: true, exploringPlaybook: true);
-                p1 = new MtdFPlayer(depth + 1, OthelloNode.Eval1, verbose: false, randomness: true, exploringPatterns: true, exploringPlaybook: true);
+                p0 = new MtdFPlayer(depth, patternEval, verbose: false, randomness: !memoize, exploringPatterns: true, exploringPlaybook: true);
+                p1 = new MtdFPlayer(depth + 1, OthelloNode.Eval1, verbose: false, randomness: !memoize, exploringPatterns: true, exploringPlaybook: true);
+                if (memoize) {
+                    p0 = new MemoPlayer(OthelloNode.Playbook, p0) { Verbose = verbose };
+                    p1 = new MemoPlayer(OthelloNode.Playbook, p1) { Verbose = verbose };
+                }
                 PlayGames(p0, p1, adversarialGames, ref adversarialGamesPlayed, verbose: verbose, training: adversarialTraining, p1Name: "Adversary+");
+
+                if (continueRandomGames) {
+                    p0 = new MtdFPlayer(1, patternEval, verbose: verbose, randomness: false);
+                    p1 = new RandomPlayer() { Verbose = verbose };
+                    if (memoize) {
+                        p0 = new MemoPlayer(OthelloNode.Playbook, p0) { Verbose = verbose };
+                        p1 = new MemoPlayer(OthelloNode.Playbook, p1) { Verbose = verbose };
+                    }
+                    PlayGames(p0, p1, randomGames, ref randomGamesPlayed, verbose, training: randomTraining, p1Name: "RandomPlayer");
+                }
             }
 
             Console.WriteLine("Press Enter to exit.");
@@ -107,6 +131,7 @@ namespace Othello {
                 Console.WriteLine("Game {0} of {1}", i + 1, games);
 
                 int playbookCount = OthelloNode.PlaybookCount;
+                bool trained = false;
 
                 int result;
                 var gameHistory = new List<Tuple<OthelloNode, int?>>();
@@ -115,14 +140,16 @@ namespace Othello {
                     if (result > 0 && (training & TrainingMode.Win) != TrainingMode.None ||
                         result < 0 && (training & TrainingMode.Loss) != TrainingMode.None ||
                         result == 0 && (training & TrainingMode.Draw) != TrainingMode.None) {
-                        OthelloNode.TrainPlaybook(gameHistory);
+                            OthelloNode.TrainPlaybook(gameHistory);
+                            trained = true;
                     }
                 } else {
                     result = GameLoop(p1, p1Name, p0, p0Name, gameHistory, verbose, training);
                     if (result > 0 && (training & TrainingMode.Loss) != TrainingMode.None ||
                         result < 0 && (training & TrainingMode.Win) != TrainingMode.None ||
                         result == 0 && (training & TrainingMode.Draw) != TrainingMode.None) {
-                        OthelloNode.TrainPlaybook(gameHistory);
+                            OthelloNode.TrainPlaybook(gameHistory);
+                            trained = true;
                     }
 
                     // We want to display the result from p0's point of view.
@@ -156,9 +183,11 @@ namespace Othello {
                     100.0 * p0WinsEma,
                     100.0 * p1WinsEma,
                     scoreEma);
-                Console.WriteLine(
-                    "{0} new entries added to the game database.",
-                    OthelloNode.PlaybookCount - playbookCount);
+                if (trained) {
+                    Console.WriteLine(
+                        "{0} new entries added to the game database.",
+                        OthelloNode.PlaybookCount - playbookCount);
+                }
 
                 if (writer != null) {
                     writer.WriteLine(

@@ -83,6 +83,9 @@ namespace OthelloWpf {
         public static DependencyProperty AiSwapProperty =
             DependencyProperty.Register("AiSwap", typeof(bool), typeof(OthelloWindow));
 
+        public static DependencyProperty MemoProperty =
+            DependencyProperty.Register("Memo", typeof(bool), typeof(OthelloWindow));
+
         public bool Randomness {
             get { return (bool)this.GetValue(RandomnessProperty); }
             set { this.SetValue(RandomnessProperty, value); }
@@ -111,6 +114,11 @@ namespace OthelloWpf {
         public bool AiSwap {
             get { return (bool)this.GetValue(AiSwapProperty); }
             set { this.SetValue(AiSwapProperty, value); }
+        }
+
+        public bool Memo {
+            get { return (bool)this.GetValue(MemoProperty); }
+            set { this.SetValue(MemoProperty, value); }
         }
 
         private void SearchDepthSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e) {
@@ -145,11 +153,13 @@ namespace OthelloWpf {
         }
 
         private void InitPlayers() {
+            const bool verbose = true;
+
             Player<OthelloNode> black =
-                new MtdFPlayer(this.SearchDepth, node => node.PatternScoreSlow(), verbose: true, solveEndgame: true, randomness: this.Randomness);
+                new MtdFPlayer(this.SearchDepth, node => node.PatternScoreSlow(), verbose: verbose, solveEndgame: true, randomness: this.Randomness);
                 //new RandomPlayer();
             Player<OthelloNode> white =
-                new MtdFPlayer(this.SearchDepth, OthelloNode.Eval1, verbose: true, solveEndgame: true, randomness: this.Randomness);
+                new MtdFPlayer(this.SearchDepth, OthelloNode.Eval1, verbose: verbose, solveEndgame: true, randomness: this.Randomness);
                 //new RandomPlayer();
 
             if (this.AiSwap) {
@@ -158,6 +168,11 @@ namespace OthelloWpf {
             } else {
                 this.blackPlayer = black;
                 this.whitePlayer = white;
+            }
+
+            if (this.Memo) {
+                this.blackPlayer = new MemoPlayer(OthelloNode.Playbook, this.blackPlayer) { Verbose = verbose };
+                this.whitePlayer = new MemoPlayer(OthelloNode.Playbook, this.whitePlayer) { Verbose = verbose };
             }
 
             if (this.HumanBlack) {
@@ -172,6 +187,7 @@ namespace OthelloWpf {
             this.Dispatcher.Invoke(new Action(this.InitPlayers));
 
             if (this.board != null) {
+                int playbookCount = OthelloNode.Playbook.Count;
                 var history = new List<Tuple<OthelloNode, int?>>();
                 List<OthelloNode> children = new List<OthelloNode>();
                 while (!this.board.IsGameOver) {
@@ -206,10 +222,13 @@ namespace OthelloWpf {
 
                 history.Add(new Tuple<OthelloNode, int?>(this.board, null));
                 this.board.PrintScore();
+                Console.WriteLine();
 
                 this.Dispatcher.BeginInvoke(new Action(delegate() {
                     if (this.Training) {
+                        Console.Write("Training playbook... ");
                         OthelloNode.TrainPlaybook(history);
+                        Console.WriteLine("{0} entries added.", OthelloNode.Playbook.Count - playbookCount);
                     }
                 }));
             }
@@ -230,7 +249,13 @@ namespace OthelloWpf {
         }
 
         private void ClearButton_Click(object sender, RoutedEventArgs e) {
+            Console.WriteLine();
+            Console.WriteLine("Initializing new game...");
+
             this.InitGame();
+            
+            Console.WriteLine("done.");
+            Console.WriteLine();
         }
 
         private static bool TryGetCoordinates(object sender, out int column, out int row) {
@@ -368,6 +393,7 @@ namespace OthelloWpf {
         }
 
         private void SavePlaybookButton_Click(object sender, RoutedEventArgs e) {
+            OthelloNode.PrintPlaybookStats();
             OthelloNode.WritePlaybook(PlaybookPath);
         }
     }

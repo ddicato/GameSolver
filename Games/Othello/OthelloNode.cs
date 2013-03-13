@@ -1329,7 +1329,7 @@ namespace Othello {
         // Score will be stored as an int, so we multiply to get more significant digits.
         private const int ScoreMultiplier = 10000; // TODO: serialize this so it is changeable
 
-        private static OthelloPlaybook Playbook;
+        public static OthelloPlaybook Playbook;
 
         /// <summary>
         /// Adds the given game history to the playbook.
@@ -2004,9 +2004,9 @@ namespace Othello {
 
             Console.Write("Final Score: {0}", this.Score);
             if (this.Score > 0) {
-                Console.WriteLine(" ({0} wins)", blackName);
+                Console.WriteLine(" ({0} beats {1})", blackName, whiteName);
             } else if (this.Score < 0) {
-                Console.WriteLine(" ({0} wins)", whiteName);
+                Console.WriteLine(" ({0} beats {1})", whiteName, blackName);
             } else {
                 Console.WriteLine(" (The game is a draw)");
             }

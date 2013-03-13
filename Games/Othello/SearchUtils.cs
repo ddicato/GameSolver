@@ -68,6 +68,9 @@ namespace Othello {
                 searchParams.NodesEvaluated++;
                 gamma = searchParams.Evaluate(node);
             } else {
+                while (searchParams.NodeCache.Count < depth) {
+                    searchParams.NodeCache.Add(new List<Node>());
+                }
                 var children = searchParams.NodeCache[depth - 1];
                 node.GetChildren(children);
                 if (children.Count == 0) {
@@ -113,8 +116,12 @@ namespace Othello {
                 beta = Math.Min(beta, maxScore);
             }
 
-            int gamma;
+            while (searchParams.NodeCache.Count <= currentDepth) {
+                searchParams.NodeCache.Add(new List<Node>());
+            }
             var children = searchParams.NodeCache[currentDepth];
+
+            int gamma;
             node.GetChildren(children);
             if (children.Count == 0) {
                 searchParams.NodesEvaluated++;

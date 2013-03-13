@@ -7,17 +7,15 @@
 - Remove TODOs from code and add to this document
 - Each player can load a different params and playbook file, for comparison and possibly coevolutionary learning.
 - Add endgame test suite
-- search code: instead of initializing with (max possible turns) * 2 + 1, dynamically expand the node cache
 - Read game params, e.g. randomGames/selfGames/adversarialGames, from a file
-- MtdFPlayer: do the move ordering after 
 
 Below a certain depth, TrainingPlayer searches based on number of games played
 PlaybookPlayer searches based on:
 1. If a positive score exists, choose the node with the highest
    1a. If there is any tie, choose the least-explored
 2. If there are any unexplored nodes, choose the one with the highest heuristic score
-3. Among the negative nodes, choose least-explored node below a certain exploration threshold
-4. If no nodes are below the exploration threshold, choose the highest score
+3. Among the negative-or-zero nodes, choose least-explored node below a certain exploration threshold
+4. If no nodes are below the exploration threshold, choose one with the highest heuristic score
 
 
 Large:

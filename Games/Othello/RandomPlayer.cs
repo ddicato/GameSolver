@@ -6,14 +6,11 @@ using System.Text;
 using Solver;
 
 namespace Othello {
-    //TODO: make RandomPlayer solve endgames for more equal benchmarking
-    //TODO: also make a book-based player
     public class RandomPlayer : Player<OthelloNode> {
         private static readonly Random Random = new Random();
 
         private readonly OthelloSearchParams searchParams = new OthelloSearchParams(
-            node => node.PieceCountSpread(),
-            SearchUtils.EndgameDepth * 2);
+            node => node.PieceCountSpread());
 
         public bool Verbose { get; set; }
 

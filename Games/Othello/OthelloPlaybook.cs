@@ -91,9 +91,13 @@ namespace Othello {
 
                 // The first game we encounter with a SolvedScore can be a leaf node, so
                 // there is no need to continue adding children.
-                // TODO: implement logic that propagates SolvedScore up and removes children
-                //       if all children have a SolvedScore.
                 if (current.SolvedScore != null) {
+                    break;
+                }
+
+                if (current.State.EmptySquareCount <= SearchUtils.EndgameDepth) {
+                    Console.Write("* ");
+                    current.SolvedScore = this.Player.GetScore(current.State);
                     break;
                 }
             }
@@ -433,25 +437,34 @@ namespace Othello {
                 this.Root.Children.Count,
                 this.Root.Children.Count == 1 ? "child" : "children");
 
-            if (this.Root.Children.Count > 0) {
-                Console.Write("Child scores: ");
-                PrintScores(this.Root.Children);
+            // TODO: make this iterative
+            const int iters = 6;
+            HashSet<Entry> children = new HashSet<Entry>() { this.Root };
+            for (int i = 1; i <= iters; i++) {
+                if (children.Count == 0) {
+                    Console.WriteLine("No generation {0} children.", i);
+                    break;
+                } else {
+                    Console.WriteLine(
+                        "Generation {0}: {1} distinct {2}",
+                        i,
+                        children.Count,
+                        children.Count == 1 ? "entry" : "entries");
+                    Console.Write("Generation {0} scores: ", i);
+                    PrintScores(children);
+                }
+
+                if (i == iters) {
+                    break;
+                }
 
                 HashSet<Entry> grandchildren = new HashSet<Entry>();
-                foreach (Entry child in this.Root.Children) {
+                foreach (Entry child in children) {
                     grandchildren.UnionWith(child.Children);
                 }
-
-                Console.WriteLine(
-                    "Generation {0}: {1} distinct {2}",
-                    2,
-                    grandchildren.Count,
-                    grandchildren.Count == 1 ? "entry" : "entries");
-                if (grandchildren.Count > 0) {
-                    Console.Write("Generation {0} scores: ", 2);
-                    PrintScores(grandchildren);
-                }
+                children = grandchildren;
             }
+            Console.WriteLine();
 
             Console.WriteLine("Number of entries by game stage:");
             List<int> gameStages = this.entriesByGameStage.Keys.ToList();
@@ -499,6 +512,77 @@ namespace Othello {
 
         #endregion
 
+        #region Test Methods
+
+        /// <summary>
+        /// Check cache coherency.
+        /// </summary>
+        /// <param name="verbose"></param>
+        /// <returns>True if the playbook is in a good state.</returns>
+        private bool CheckCache(bool verbose) {
+            var toCheck = new Queue<Entry>();
+
+            toCheck.Enqueue(this.Root);
+            while (toCheck.Count > 0) {
+                Entry entry = toCheck.Dequeue();
+
+                if (!entry.CheckCache()) {
+                    return false;
+                }
+
+                foreach (Entry child in entry.Children) {
+                    toCheck.Enqueue(child);
+                }
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// Check for orphan subtrees.
+        /// </summary>
+        /// <param name="verbose"></param>
+        /// <returns>True if the playbook is in a good state.</returns>
+        private bool CheckTree(bool verbose) {
+            if (this.Root == null) {
+                return false;
+            }
+
+            return true; // TODO
+        }
+
+        /// <summary>
+        /// Check for tree nodes that aren't present in the entry set.
+        /// </summary>
+        /// <param name="verbose"></param>
+        /// <returns>True if the playbook is in a good state.</returns>
+        private bool CheckEntries(bool verbose) {
+            return true; // TODO
+        }
+
+        /// <summary>
+        /// Check for a 1-1 mapping between entries and entriesByGameStage.
+        /// </summary>
+        /// <param name="verbose"></param>
+        /// <returns>True if the playbook is in a good state.</returns>
+        private bool CheckGameStageEntries(bool verbose) {
+            return true; // TODO
+        }
+
+        /// <summary>
+        /// Run a series of checks on the playbook.
+        /// </summary>
+        /// <param name="verbose"></param>
+        /// <returns>True if the playbook is in a good state.</returns>
+        public bool Check(bool verbose = false) {
+            return this.CheckTree(verbose) &&
+                this.CheckEntries(verbose) &&
+                this.CheckGameStageEntries(verbose) &&
+                this.CheckCache(verbose);
+        }
+
+        #endregion
+
         public class Entry {
             private readonly OthelloPlaybook playbook;
 
@@ -534,18 +618,25 @@ namespace Othello {
                             //       node completely by returning a bogus value
                             Debug.Assert(this.State.IsGameOver || this.State.EmptySquareCount == SearchUtils.EndgameDepth);
 
-                            this.score = this.SolvedScore = this.State.PieceCountSpread();
-                        } else if (this.State.EmptySquareCount <= SearchUtils.EndgameDepth) {
-                            // We can calculate the endgame score exactly.
-                            Console.Write("* ");
-                            // TODO: replace Playbook.Player with static calls to MtdF search. Then, get rid of
-                            //       GetScore() and the out param
-                            this.SolvedScore = this.playbook.Player.GetScore(this.State);
-                            return this.SolvedScore.Value;
+                            if (this.State.IsGameOver) {
+                                this.score = this.State.PieceCountSpread();
+                                this.SolvedScore = this.score;
+                            } else {
+                                Debug.Assert(this.State.EmptySquareCount >= SearchUtils.EndgameDepth);
+
+                                // We can calculate the endgame score exactly.
+                                // TODO: replace Playbook.Player with static calls to MtdF search. Then, get rid of
+                                //       GetScore() and the out param
+                                Console.Write("* ");
+                                this.score = this.playbook.Player.GetScore(this.State);
+                                this.SolvedScore = this.score;
+
+                                // TODO: remove child nodes
+                            }
                         } else {
                             // The best way to estimate the score of this board is to do a negamax search
                             // within the space of recorded game states.
-                            this.score = this.Children.Max(entry => -entry.Score);
+                            this.score = -this.Children.Max(entry => entry.Score);
                         }
                     }
 
@@ -572,13 +663,10 @@ namespace Othello {
             }
 #endif
 
-            // TODO: account for symmetry? use GetDistinctChildren()
             public int UnexploredChildren {
                 get {
-                    int result = this.State.GetChildren().Count - this.Children.Count;
-                    Debug.Assert(result >= 0);
-
-                    return result;
+                    return this.State.GetChildren().Count(
+                        child => OthelloNode.GetSymmetries(child).Any(sym => this.Children.Any(ent => ent.State.Equals(sym))));
                 }
             }
 
@@ -629,11 +717,38 @@ namespace Othello {
             public override bool Equals(object obj) {
                 Entry entry = obj as Entry;
 
-                return entry != null && this.State.Equals(entry.State);
+                return entry != null && OthelloNode.GetSymmetries(this.State).Any(entry.State.Equals);
             }
 
             public override int GetHashCode() {
-                return this.State.GetHashCode();
+                return OthelloNode.GetSymmetries(this.State).Aggregate(0, (hash, state) => hash ^ state.GetHashCode());
+            }
+
+            #endregion
+
+            #region Test Methods
+
+            internal bool CheckCache() {
+                if (this.score == null) {
+                    return true;
+                }
+
+                if (this.SolvedScore != null) {
+                    return this.score == this.SolvedScore;
+                }
+
+                int max = -int.MaxValue;
+                foreach (Entry child in this.Children) {
+                    if (child.score == null) {
+                        return false;
+                    }
+
+                    if (child.score.Value > max) {
+                        max = child.score.Value;
+                    }
+                }
+
+                return this.score.Value == -max;
             }
 
             #endregion

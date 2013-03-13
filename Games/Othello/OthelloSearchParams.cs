@@ -9,8 +9,7 @@ namespace Othello {
     public class OthelloSearchParams : SearchParams<OthelloNode> {
         private readonly Func<OthelloNode, int> evaluator;
 
-        public OthelloSearchParams(Func<OthelloNode, int> evaluator, int nodeCacheSize = 128)
-            : base(nodeCacheSize) {
+        public OthelloSearchParams(Func<OthelloNode, int> evaluator) : base() {
             if (evaluator == null) {
                 throw new ArgumentNullException();
             }

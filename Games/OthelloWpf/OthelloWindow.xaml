@@ -4,8 +4,8 @@
         xmlns:local="clr-namespace:OthelloWpf"
         DataContext="{Binding RelativeSource={RelativeSource Self}}"
         Title="OthelloWindow"
-        Height="425"
-        Width="550">
+        Height="450"
+        Width="600">
     <Window.Resources>
         <ResourceDictionary>
             <Style TargetType="Rectangle">
@@ -58,6 +58,7 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
         </Grid.RowDefinitions>
         
         <Border Grid.Row="0" Grid.Column="0">
@@ -385,7 +386,7 @@
         
         <StackPanel Grid.Row="0"
                     Grid.Column="1"
-                    Grid.RowSpan="2"
+                    Grid.RowSpan="3"
                     Margin="0,5">
             <TextBlock HorizontalAlignment="Center">
                 AI Options
@@ -396,6 +397,9 @@
             </CheckBox>
             <CheckBox IsChecked="{Binding Training}">
                 _Training
+            </CheckBox>
+            <CheckBox IsChecked="{Binding Memo}">
+                _Memoize
             </CheckBox>
 
             <Grid>
