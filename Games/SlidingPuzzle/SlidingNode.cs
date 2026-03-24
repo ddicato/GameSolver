@@ -106,23 +106,9 @@ namespace SlidingPuzzle {
             throw new NotImplementedException();
         }
 
-        public override List<SlidingNode> GetChildren() {
-            List<SlidingNode> children = new List<SlidingNode>(4) { Left, Right, Up, Down };
-/*/#if DEBUG
-            Console.WriteLine("==============NODE==============");
-
-
-
-            Console.WriteLine("-----------CHILDREN-------------");
-            
-            foreach(SlidingNode child in children) {
-                Console.WriteLine(child);
-            }
-            Console.WriteLine("==============FIN===============");
-
-//#endif*/
+        public override void GetChildren(List<SlidingNode> children) {
+            children.AddRange(new SlidingNode[] { Left, Right, Up, Down });
             children.RemoveAll(board => board == null);
-            return children;
         }
 
         public override bool IsGameOver {
