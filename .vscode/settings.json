@@ -1,0 +1,13 @@
+{
+  "editor.defaultFormatter": null,
+  "csharp.format.enable": true,
+  "[csharp]": {
+    "editor.defaultFormatter": "ms-dotnettools.csharp"
+  },
+  "editor.formatOnSaveMode": "file",
+  "editor.formatOnSave": false,
+  "omnisharp.useEditorFormattingSettings": true,
+  "evenBetterToml.formatter.allowedBlankLines": 2,
+  "evenBetterToml.formatter.columnWidth": 120,
+  "editor.rulers": [120]
+}
