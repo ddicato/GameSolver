@@ -1,0 +1,80 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="GridlockAvalonia.MainWindow"
+        Title="Gridlock" Height="270" Width="300">
+
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="*" MinWidth="100" />
+        </Grid.ColumnDefinitions>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0"
+                    Grid.Column="0"
+                    Grid.RowSpan="3">
+            <TextBox Name="mainBox"
+                    Margin="5"
+                    Width="150"
+                    Height="150"
+                    IsReadOnly="True"
+                    FontFamily="Courier New"
+                    FontSize="16" />
+
+            <StackPanel Orientation="Horizontal"
+                        HorizontalAlignment="Center">
+                <Button Name="firstButton"
+                        Height="23" Margin="3,5" VerticalAlignment="Bottom" HorizontalAlignment="Left" Width="23" IsEnabled="False" Click="firstButton_Click">|&lt;</Button>
+                <Button Name="prevButton"
+                        Height="23" Margin="3,5" VerticalAlignment="Bottom" HorizontalAlignment="Left" Width="23" IsEnabled="False" Click="prevButton_Click">&lt;</Button>
+                <Button Name="playButton"
+                        Height="23" Margin="3,5" VerticalAlignment="Bottom" HorizontalAlignment="Left" Width="23" IsEnabled="False" Click="playButton_Click">&gt;&gt;</Button>
+                <Button Name="nextButton"
+                        Height="23" Margin="3,5" VerticalAlignment="Bottom" HorizontalAlignment="Left" Width="23" IsEnabled="False" Click="nextButton_Click">&gt;</Button>
+                <Button Name="lastButton"
+                        Height="23" Margin="3,5" VerticalAlignment="Bottom" IsEnabled="False" HorizontalAlignment="Left" Width="23" Click="lastButton_Click">&gt;|</Button>
+            </StackPanel>
+
+            <Button Name="solveButton"
+                    Margin="5"
+                    Width="80"
+                    Height="23"
+                    VerticalAlignment="Top"
+                    IsEnabled="False"
+                    Click="solveButton_Click">
+                Solve
+            </Button>
+        </StackPanel>
+
+        <TextBox Name="statusBox"
+                 Grid.Row="0"
+                 Grid.Column="1"
+                 Margin="5"
+                 HorizontalAlignment="Stretch"
+                 VerticalAlignment="Stretch"
+                 IsReadOnly="True" />
+
+        <TextBox Name="levelBox"
+                 Grid.Row="1"
+                 Grid.Column="1"
+                 Margin="5"
+                 Height="21"
+                 HorizontalAlignment="Stretch"
+                 VerticalAlignment="Top" />
+
+        <Button Name="levelButton"
+                 Grid.Row="2"
+                 Grid.Column="1"
+                Margin="5"
+                Height="23"
+                HorizontalAlignment="Stretch"
+                VerticalAlignment="Top"
+                Click="levelButton_Click">
+            Go to Level
+        </Button>
+    </Grid>
+</Window>

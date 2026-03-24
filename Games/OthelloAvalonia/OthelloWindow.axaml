@@ -1,0 +1,332 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="OthelloAvalonia.OthelloWindow"
+        Title="Othello"
+        SizeToContent="WidthAndHeight"
+        DataContext="{Binding RelativeSource={RelativeSource Self}}">
+    <Window.Styles>
+        <Style Selector="Rectangle.board">
+            <Setter Property="Fill" Value="ForestGreen" />
+            <Setter Property="Height" Value="40" />
+            <Setter Property="Width" Value="40" />
+        </Style>
+
+        <Style Selector="Ellipse.piece">
+            <Setter Property="Margin" Value="5" />
+            <Setter Property="Fill" Value="Transparent" />
+        </Style>
+
+        <Style Selector="Button">
+            <Setter Property="Margin" Value="8" />
+        </Style>
+
+        <Style Selector="Border.cell">
+            <Setter Property="BorderBrush" Value="DarkSeaGreen" />
+            <Setter Property="BorderThickness" Value="1" />
+        </Style>
+
+        <Style Selector="CheckBox">
+            <Setter Property="Margin" Value="5" />
+        </Style>
+
+        <Style Selector="TextBlock">
+            <Setter Property="Margin" Value="5" />
+        </Style>
+
+        <Style Selector="Slider">
+            <Setter Property="Margin" Value="5" />
+        </Style>
+    </Window.Styles>
+
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <Border Classes="cell" Grid.Row="0" Grid.Column="0">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <Border Classes="cell" Grid.Column="0" Grid.Row="0"><Rectangle Classes="board" x:Name="Square00" /></Border>
+                <Border Classes="cell" Grid.Column="0" Grid.Row="1"><Rectangle Classes="board" x:Name="Square01" /></Border>
+                <Border Classes="cell" Grid.Column="0" Grid.Row="2"><Rectangle Classes="board" x:Name="Square02" /></Border>
+                <Border Classes="cell" Grid.Column="0" Grid.Row="3"><Rectangle Classes="board" x:Name="Square03" /></Border>
+                <Border Classes="cell" Grid.Column="0" Grid.Row="4"><Rectangle Classes="board" x:Name="Square04" /></Border>
+                <Border Classes="cell" Grid.Column="0" Grid.Row="5"><Rectangle Classes="board" x:Name="Square05" /></Border>
+                <Border Classes="cell" Grid.Column="0" Grid.Row="6"><Rectangle Classes="board" x:Name="Square06" /></Border>
+                <Border Classes="cell" Grid.Column="0" Grid.Row="7"><Rectangle Classes="board" x:Name="Square07" /></Border>
+
+                <Border Classes="cell" Grid.Column="1" Grid.Row="0"><Rectangle Classes="board" x:Name="Square10" /></Border>
+                <Border Classes="cell" Grid.Column="1" Grid.Row="1"><Rectangle Classes="board" x:Name="Square11" /></Border>
+                <Border Classes="cell" Grid.Column="1" Grid.Row="2"><Rectangle Classes="board" x:Name="Square12" /></Border>
+                <Border Classes="cell" Grid.Column="1" Grid.Row="3"><Rectangle Classes="board" x:Name="Square13" /></Border>
+                <Border Classes="cell" Grid.Column="1" Grid.Row="4"><Rectangle Classes="board" x:Name="Square14" /></Border>
+                <Border Classes="cell" Grid.Column="1" Grid.Row="5"><Rectangle Classes="board" x:Name="Square15" /></Border>
+                <Border Classes="cell" Grid.Column="1" Grid.Row="6"><Rectangle Classes="board" x:Name="Square16" /></Border>
+                <Border Classes="cell" Grid.Column="1" Grid.Row="7"><Rectangle Classes="board" x:Name="Square17" /></Border>
+
+                <Border Classes="cell" Grid.Column="2" Grid.Row="0"><Rectangle Classes="board" x:Name="Square20" /></Border>
+                <Border Classes="cell" Grid.Column="2" Grid.Row="1"><Rectangle Classes="board" x:Name="Square21" /></Border>
+                <Border Classes="cell" Grid.Column="2" Grid.Row="2"><Rectangle Classes="board" x:Name="Square22" /></Border>
+                <Border Classes="cell" Grid.Column="2" Grid.Row="3"><Rectangle Classes="board" x:Name="Square23" /></Border>
+                <Border Classes="cell" Grid.Column="2" Grid.Row="4"><Rectangle Classes="board" x:Name="Square24" /></Border>
+                <Border Classes="cell" Grid.Column="2" Grid.Row="5"><Rectangle Classes="board" x:Name="Square25" /></Border>
+                <Border Classes="cell" Grid.Column="2" Grid.Row="6"><Rectangle Classes="board" x:Name="Square26" /></Border>
+                <Border Classes="cell" Grid.Column="2" Grid.Row="7"><Rectangle Classes="board" x:Name="Square27" /></Border>
+
+                <Border Classes="cell" Grid.Column="3" Grid.Row="0"><Rectangle Classes="board" x:Name="Square30" /></Border>
+                <Border Classes="cell" Grid.Column="3" Grid.Row="1"><Rectangle Classes="board" x:Name="Square31" /></Border>
+                <Border Classes="cell" Grid.Column="3" Grid.Row="2"><Rectangle Classes="board" x:Name="Square32" /></Border>
+                <Border Classes="cell" Grid.Column="3" Grid.Row="3"><Rectangle Classes="board" x:Name="Square33" /></Border>
+                <Border Classes="cell" Grid.Column="3" Grid.Row="4"><Rectangle Classes="board" x:Name="Square34" /></Border>
+                <Border Classes="cell" Grid.Column="3" Grid.Row="5"><Rectangle Classes="board" x:Name="Square35" /></Border>
+                <Border Classes="cell" Grid.Column="3" Grid.Row="6"><Rectangle Classes="board" x:Name="Square36" /></Border>
+                <Border Classes="cell" Grid.Column="3" Grid.Row="7"><Rectangle Classes="board" x:Name="Square37" /></Border>
+
+                <Border Classes="cell" Grid.Column="4" Grid.Row="0"><Rectangle Classes="board" x:Name="Square40" /></Border>
+                <Border Classes="cell" Grid.Column="4" Grid.Row="1"><Rectangle Classes="board" x:Name="Square41" /></Border>
+                <Border Classes="cell" Grid.Column="4" Grid.Row="2"><Rectangle Classes="board" x:Name="Square42" /></Border>
+                <Border Classes="cell" Grid.Column="4" Grid.Row="3"><Rectangle Classes="board" x:Name="Square43" /></Border>
+                <Border Classes="cell" Grid.Column="4" Grid.Row="4"><Rectangle Classes="board" x:Name="Square44" /></Border>
+                <Border Classes="cell" Grid.Column="4" Grid.Row="5"><Rectangle Classes="board" x:Name="Square45" /></Border>
+                <Border Classes="cell" Grid.Column="4" Grid.Row="6"><Rectangle Classes="board" x:Name="Square46" /></Border>
+                <Border Classes="cell" Grid.Column="4" Grid.Row="7"><Rectangle Classes="board" x:Name="Square47" /></Border>
+
+                <Border Classes="cell" Grid.Column="5" Grid.Row="0"><Rectangle Classes="board" x:Name="Square50" /></Border>
+                <Border Classes="cell" Grid.Column="5" Grid.Row="1"><Rectangle Classes="board" x:Name="Square51" /></Border>
+                <Border Classes="cell" Grid.Column="5" Grid.Row="2"><Rectangle Classes="board" x:Name="Square52" /></Border>
+                <Border Classes="cell" Grid.Column="5" Grid.Row="3"><Rectangle Classes="board" x:Name="Square53" /></Border>
+                <Border Classes="cell" Grid.Column="5" Grid.Row="4"><Rectangle Classes="board" x:Name="Square54" /></Border>
+                <Border Classes="cell" Grid.Column="5" Grid.Row="5"><Rectangle Classes="board" x:Name="Square55" /></Border>
+                <Border Classes="cell" Grid.Column="5" Grid.Row="6"><Rectangle Classes="board" x:Name="Square56" /></Border>
+                <Border Classes="cell" Grid.Column="5" Grid.Row="7"><Rectangle Classes="board" x:Name="Square57" /></Border>
+
+                <Border Classes="cell" Grid.Column="6" Grid.Row="0"><Rectangle Classes="board" x:Name="Square60" /></Border>
+                <Border Classes="cell" Grid.Column="6" Grid.Row="1"><Rectangle Classes="board" x:Name="Square61" /></Border>
+                <Border Classes="cell" Grid.Column="6" Grid.Row="2"><Rectangle Classes="board" x:Name="Square62" /></Border>
+                <Border Classes="cell" Grid.Column="6" Grid.Row="3"><Rectangle Classes="board" x:Name="Square63" /></Border>
+                <Border Classes="cell" Grid.Column="6" Grid.Row="4"><Rectangle Classes="board" x:Name="Square64" /></Border>
+                <Border Classes="cell" Grid.Column="6" Grid.Row="5"><Rectangle Classes="board" x:Name="Square65" /></Border>
+                <Border Classes="cell" Grid.Column="6" Grid.Row="6"><Rectangle Classes="board" x:Name="Square66" /></Border>
+                <Border Classes="cell" Grid.Column="6" Grid.Row="7"><Rectangle Classes="board" x:Name="Square67" /></Border>
+
+                <Border Classes="cell" Grid.Column="7" Grid.Row="0"><Rectangle Classes="board" x:Name="Square70" /></Border>
+                <Border Classes="cell" Grid.Column="7" Grid.Row="1"><Rectangle Classes="board" x:Name="Square71" /></Border>
+                <Border Classes="cell" Grid.Column="7" Grid.Row="2"><Rectangle Classes="board" x:Name="Square72" /></Border>
+                <Border Classes="cell" Grid.Column="7" Grid.Row="3"><Rectangle Classes="board" x:Name="Square73" /></Border>
+                <Border Classes="cell" Grid.Column="7" Grid.Row="4"><Rectangle Classes="board" x:Name="Square74" /></Border>
+                <Border Classes="cell" Grid.Column="7" Grid.Row="5"><Rectangle Classes="board" x:Name="Square75" /></Border>
+                <Border Classes="cell" Grid.Column="7" Grid.Row="6"><Rectangle Classes="board" x:Name="Square76" /></Border>
+                <Border Classes="cell" Grid.Column="7" Grid.Row="7"><Rectangle Classes="board" x:Name="Square77" /></Border>
+
+                <Ellipse Classes="piece" Grid.Column="0" Grid.Row="0" x:Name="Ellipse00" />
+                <Ellipse Classes="piece" Grid.Column="0" Grid.Row="1" x:Name="Ellipse01" />
+                <Ellipse Classes="piece" Grid.Column="0" Grid.Row="2" x:Name="Ellipse02" />
+                <Ellipse Classes="piece" Grid.Column="0" Grid.Row="3" x:Name="Ellipse03" />
+                <Ellipse Classes="piece" Grid.Column="0" Grid.Row="4" x:Name="Ellipse04" />
+                <Ellipse Classes="piece" Grid.Column="0" Grid.Row="5" x:Name="Ellipse05" />
+                <Ellipse Classes="piece" Grid.Column="0" Grid.Row="6" x:Name="Ellipse06" />
+                <Ellipse Classes="piece" Grid.Column="0" Grid.Row="7" x:Name="Ellipse07" />
+
+                <Ellipse Classes="piece" Grid.Column="1" Grid.Row="0" x:Name="Ellipse10" />
+                <Ellipse Classes="piece" Grid.Column="1" Grid.Row="1" x:Name="Ellipse11" />
+                <Ellipse Classes="piece" Grid.Column="1" Grid.Row="2" x:Name="Ellipse12" />
+                <Ellipse Classes="piece" Grid.Column="1" Grid.Row="3" x:Name="Ellipse13" />
+                <Ellipse Classes="piece" Grid.Column="1" Grid.Row="4" x:Name="Ellipse14" />
+                <Ellipse Classes="piece" Grid.Column="1" Grid.Row="5" x:Name="Ellipse15" />
+                <Ellipse Classes="piece" Grid.Column="1" Grid.Row="6" x:Name="Ellipse16" />
+                <Ellipse Classes="piece" Grid.Column="1" Grid.Row="7" x:Name="Ellipse17" />
+
+                <Ellipse Classes="piece" Grid.Column="2" Grid.Row="0" x:Name="Ellipse20" />
+                <Ellipse Classes="piece" Grid.Column="2" Grid.Row="1" x:Name="Ellipse21" />
+                <Ellipse Classes="piece" Grid.Column="2" Grid.Row="2" x:Name="Ellipse22" />
+                <Ellipse Classes="piece" Grid.Column="2" Grid.Row="3" x:Name="Ellipse23" />
+                <Ellipse Classes="piece" Grid.Column="2" Grid.Row="4" x:Name="Ellipse24" />
+                <Ellipse Classes="piece" Grid.Column="2" Grid.Row="5" x:Name="Ellipse25" />
+                <Ellipse Classes="piece" Grid.Column="2" Grid.Row="6" x:Name="Ellipse26" />
+                <Ellipse Classes="piece" Grid.Column="2" Grid.Row="7" x:Name="Ellipse27" />
+
+                <Ellipse Classes="piece" Grid.Column="3" Grid.Row="0" x:Name="Ellipse30" />
+                <Ellipse Classes="piece" Grid.Column="3" Grid.Row="1" x:Name="Ellipse31" />
+                <Ellipse Classes="piece" Grid.Column="3" Grid.Row="2" x:Name="Ellipse32" />
+                <Ellipse Classes="piece" Grid.Column="3" Grid.Row="3" x:Name="Ellipse33" />
+                <Ellipse Classes="piece" Grid.Column="3" Grid.Row="4" x:Name="Ellipse34" />
+                <Ellipse Classes="piece" Grid.Column="3" Grid.Row="5" x:Name="Ellipse35" />
+                <Ellipse Classes="piece" Grid.Column="3" Grid.Row="6" x:Name="Ellipse36" />
+                <Ellipse Classes="piece" Grid.Column="3" Grid.Row="7" x:Name="Ellipse37" />
+
+                <Ellipse Classes="piece" Grid.Column="4" Grid.Row="0" x:Name="Ellipse40" />
+                <Ellipse Classes="piece" Grid.Column="4" Grid.Row="1" x:Name="Ellipse41" />
+                <Ellipse Classes="piece" Grid.Column="4" Grid.Row="2" x:Name="Ellipse42" />
+                <Ellipse Classes="piece" Grid.Column="4" Grid.Row="3" x:Name="Ellipse43" />
+                <Ellipse Classes="piece" Grid.Column="4" Grid.Row="4" x:Name="Ellipse44" />
+                <Ellipse Classes="piece" Grid.Column="4" Grid.Row="5" x:Name="Ellipse45" />
+                <Ellipse Classes="piece" Grid.Column="4" Grid.Row="6" x:Name="Ellipse46" />
+                <Ellipse Classes="piece" Grid.Column="4" Grid.Row="7" x:Name="Ellipse47" />
+
+                <Ellipse Classes="piece" Grid.Column="5" Grid.Row="0" x:Name="Ellipse50" />
+                <Ellipse Classes="piece" Grid.Column="5" Grid.Row="1" x:Name="Ellipse51" />
+                <Ellipse Classes="piece" Grid.Column="5" Grid.Row="2" x:Name="Ellipse52" />
+                <Ellipse Classes="piece" Grid.Column="5" Grid.Row="3" x:Name="Ellipse53" />
+                <Ellipse Classes="piece" Grid.Column="5" Grid.Row="4" x:Name="Ellipse54" />
+                <Ellipse Classes="piece" Grid.Column="5" Grid.Row="5" x:Name="Ellipse55" />
+                <Ellipse Classes="piece" Grid.Column="5" Grid.Row="6" x:Name="Ellipse56" />
+                <Ellipse Classes="piece" Grid.Column="5" Grid.Row="7" x:Name="Ellipse57" />
+
+                <Ellipse Classes="piece" Grid.Column="6" Grid.Row="0" x:Name="Ellipse60" />
+                <Ellipse Classes="piece" Grid.Column="6" Grid.Row="1" x:Name="Ellipse61" />
+                <Ellipse Classes="piece" Grid.Column="6" Grid.Row="2" x:Name="Ellipse62" />
+                <Ellipse Classes="piece" Grid.Column="6" Grid.Row="3" x:Name="Ellipse63" />
+                <Ellipse Classes="piece" Grid.Column="6" Grid.Row="4" x:Name="Ellipse64" />
+                <Ellipse Classes="piece" Grid.Column="6" Grid.Row="5" x:Name="Ellipse65" />
+                <Ellipse Classes="piece" Grid.Column="6" Grid.Row="6" x:Name="Ellipse66" />
+                <Ellipse Classes="piece" Grid.Column="6" Grid.Row="7" x:Name="Ellipse67" />
+
+                <Ellipse Classes="piece" Grid.Column="7" Grid.Row="0" x:Name="Ellipse70" />
+                <Ellipse Classes="piece" Grid.Column="7" Grid.Row="1" x:Name="Ellipse71" />
+                <Ellipse Classes="piece" Grid.Column="7" Grid.Row="2" x:Name="Ellipse72" />
+                <Ellipse Classes="piece" Grid.Column="7" Grid.Row="3" x:Name="Ellipse73" />
+                <Ellipse Classes="piece" Grid.Column="7" Grid.Row="4" x:Name="Ellipse74" />
+                <Ellipse Classes="piece" Grid.Column="7" Grid.Row="5" x:Name="Ellipse75" />
+                <Ellipse Classes="piece" Grid.Column="7" Grid.Row="6" x:Name="Ellipse76" />
+                <Ellipse Classes="piece" Grid.Column="7" Grid.Row="7" x:Name="Ellipse77" />
+            </Grid>
+        </Border>
+
+        <Grid Grid.Row="1"
+              Grid.Column="0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <Button x:Name="ClearButton"
+                    Grid.Column="0"
+                    Click="ClearButton_Click">
+                New Game
+            </Button>
+
+            <Button x:Name="StartButton"
+                    Grid.Column="1"
+                    IsEnabled="False"
+                    Click="StartButton_Click">
+                Start
+            </Button>
+        </Grid>
+
+        <StackPanel Grid.Row="0"
+                    Grid.Column="1"
+                    Grid.RowSpan="3"
+                    Margin="0,5">
+            <TextBlock HorizontalAlignment="Center">
+                AI Options
+            </TextBlock>
+
+            <CheckBox IsChecked="{Binding Randomness}">
+                Randomness
+            </CheckBox>
+            <CheckBox IsChecked="{Binding Training}">
+                Training
+            </CheckBox>
+            <CheckBox IsChecked="{Binding Memo}">
+                Memoize
+            </CheckBox>
+
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <TextBlock Grid.Column="0">
+                    Search Depth:
+                </TextBlock>
+                <TextBlock Grid.Column="1"
+                           HorizontalAlignment="Right"
+                           Text="{Binding SearchDepth}" />
+            </Grid>
+            <Slider x:Name="SearchDepthSlider"
+                    Minimum="1"
+                    Maximum="10"
+                    TickFrequency="1"
+                    IsSnapToTickEnabled="True"
+                    Value="{Binding SearchDepth}" />
+
+            <Border Height="1" Background="Gray" Margin="5" />
+
+            <TextBlock HorizontalAlignment="Center">
+                Player Options
+            </TextBlock>
+
+            <CheckBox IsChecked="{Binding HumanBlack}">
+                Black is Human
+            </CheckBox>
+            <CheckBox IsChecked="{Binding HumanWhite}">
+                White is Human
+            </CheckBox>
+            <CheckBox IsChecked="{Binding AiSwap}">
+                Swap AIs
+            </CheckBox>
+
+            <Border Height="1" Background="Gray" Margin="5" />
+
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <Button x:Name="SaveParamsButton"
+                        Grid.Row="0"
+                        Grid.Column="0"
+                        Click="SaveParamsButton_Click">
+                    Save Params
+                </Button>
+
+                <Button x:Name="RefreshParamsButton"
+                        Grid.Row="0"
+                        Grid.Column="1"
+                        Click="RefreshParamsButton_Click">
+                    Refresh Params
+                </Button>
+
+                <Button x:Name="SavePlaybookButton"
+                        Grid.Row="1"
+                        Grid.Column="0"
+                        Grid.ColumnSpan="2"
+                        Click="SavePlaybookButton_Click">
+                        Save Playbook
+                </Button>
+            </Grid>
+        </StackPanel>
+    </Grid>
+</Window>
