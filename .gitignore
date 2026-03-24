@@ -1,0 +1,9 @@
+bin/
+obj/
+*.user
+*.suo
+*.psess
+.vs/
+
+playbook.txt
+params.txt
