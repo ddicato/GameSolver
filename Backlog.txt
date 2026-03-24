@@ -21,3 +21,10 @@ PlaybookPlayer searches based on:
 Large:
 Build a playbook visualizer.
 
+PatternScoreSlow optimization ideas:
+- Precompute a canonical board form instead of iterating all 8 symmetries and averaging.
+- Flatten the 3-level nested dictionary hierarchy into a single lookup keyed on a combined hash.
+- Use flat arrays instead of dictionaries for pattern lookup (e.g., 3^8 ternary index for 8-square patterns).
+- Precompute pattern indices incrementally as moves are made, rather than from scratch each call (Zebra/Edax approach).
+- Pre-bake the weight division (Score * Weight / Transforms.Length) into a single precomputed value.
+
