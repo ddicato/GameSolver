@@ -115,6 +115,7 @@ namespace Othello {
             // Iterative deepening
             int best = 0;
             bestScore = int.MinValue;
+            // [(node index, score), ...]
             List<Tuple<int, int>> metadata = nodes.Select((node, index) => new Tuple<int, int>(index, 0)).ToList();
             for (int depth = 1; depth <= Math.Max(1, this.depth); depth++) {
                 best = 0;
@@ -135,7 +136,7 @@ namespace Othello {
                     int index = metadata[i].Item1;
                     int score = metadata[i].Item2;
 
-                    score = -SearchUtils.MtdF(this.searchParams, nodes[index], depth, metadata[i].Item2);
+                    score = -SearchUtils.MtdF(this.searchParams, nodes[index], depth, score);
                     if (score > bestScore) {
                         best = index;
                         bestScore = score;
@@ -204,7 +205,7 @@ namespace Othello {
                 if (this.ExploringPlaybook) {
                     recorded = new bool[nodes.Count];
                     for (int i = 0; i < nodes.Count; i++) {
-                        recorded[i] = OthelloNode.PlaybookContains(nodes[i]);
+                        recorded[i] = OthelloNode.PlaybookContains(nodes[metadata[i].Item1]);
                         if (recorded[i]) {
                             recordedCount++;
                         }
@@ -215,27 +216,32 @@ namespace Othello {
                     best = metadata[i].Item1;
                     bestScore = metadata[i].Item2;
 
+                    // Higher means more likely to pick this node, or less likely to skip it. There is a 1 in
+                    // probabiliyReciprocal chance of skipping this node.
                     int probabilityReciprocal = 8;
 
                     if (this.ExploringPatterns) {
-                        // Decrease likelihood of skipping this node if more of the features are unknown.
-                        double known = OthelloNode.PatternClasses.Length - nodes[best].UnknownPatterns();
-                        known *= known;
-                        known /= OthelloNode.Features.Length * OthelloNode.Features.Length;
-                        known = Math.Sqrt(known);
+                        // Increase likelihood of picking this node if more of the features are unknown.
+                        double unknown = nodes[best].UnknownPatterns();
+                        unknown /= 8.0; // UnknownPatterns counts 8x compared to OthelloNode.PatternClasses due to symmetries.
+                        unknown /= OthelloNode.PatternClasses.Length;
 
-                        probabilityReciprocal += (int)(probabilityReciprocal * known);
+                        probabilityReciprocal += (int)(probabilityReciprocal * unknown);
                     }
 
                     if (this.ExploringPlaybook) {
                         double factor;
                         if (recorded[i]) {
-                            // Increase likelihood of skipping this node if the board is in the playbook and
+                            // Decrease likelihood of picking this node if the board is in the playbook and
                             // few other child nodes are in the playbook.
+                            // recordedCount high => factor -> 1
+                            // recordedCount low => factor -> 0.5
                             factor = (recordedCount + nodes.Count) / (2.0 * nodes.Count);
                         } else {
-                            // Decrease likelihood of skipping this node if the board is not in the playbook
-                            // few other child nodes are not in the playbook.
+                            // Increase likelihood of picking this node if the board is new and
+                            // few other child nodes are new.
+                            // recordedCount high -> factor -> 2
+                            // recordedCount low -> factor -> 1
                             factor = (2.0 * nodes.Count) / (nodes.Count * 2 - recordedCount);
                         }
 
