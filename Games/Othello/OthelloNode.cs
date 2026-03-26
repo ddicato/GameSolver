@@ -1114,7 +1114,7 @@ namespace Othello {
                     this.TotalWinScore += newScore;
                 } else if (newScore < 0) {
                     this.LossCount += 1u;
-                    this.TotalLossScore += 1u;
+                    this.TotalLossScore += newScore;
                 }
 
                 this.TotalScore = data.TotalScore + newScore;
