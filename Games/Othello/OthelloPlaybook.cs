@@ -95,10 +95,10 @@ namespace Othello {
                     break;
                 }
 
-                if (current.State.EmptySquareCount <= SearchUtils.EndgameDepth) {
+                // Solve the endgame exactly if we're close enough.
+                if (current.SolvedScore == null && current.State.EmptySquareCount <= SearchUtils.EndgameDepth) {
                     Console.Write("* ");
                     current.SolvedScore = this.Player.GetScore(current.State);
-                    break;
                 }
             }
         }
@@ -124,6 +124,87 @@ namespace Othello {
 
             this.Root.Unlink();
             this.AddEntry(this.Root);
+        }
+
+        /// <summary>
+        /// Returns all leaf entries (no children) that are not game-over. These are candidates for further exploration,
+        /// for example by having a solved endgame that hasn't made it into the playbook.
+        /// </summary>
+        public List<Entry> GetUnfinishedLeaves() {
+            return this.entries.Values
+                .Where(e => e.Children.Count == 0 && !e.State.IsGameOver)
+                .ToList();
+        }
+
+        /// <summary>
+        /// Backfills SolvedScore on internal nodes whose children all have SolvedScores.
+        /// Processes bottom-up by game stage (most pieces first) so that children are
+        /// resolved before parents. Returns the number of entries backfilled.
+        /// </summary>
+        public int BackfillSolvedScores() {
+            int backfilled = 0;
+
+            // Process from deepest game stage (most pieces) to shallowest.
+            // Only backfill within endgame range where the playbook contains
+            // complete solved PVs. Earlier stages have selective (not exhaustive)
+            // children, so "all children solved" doesn't mean the position is solved.
+            int minPieces = 64 - SearchUtils.EndgameDepth - 2; // match maxSolveDepth
+            List<int> stages = this.entriesByGameStage.Keys.ToList();
+            stages.Sort();
+            stages.Reverse();
+
+            foreach (int stage in stages) {
+                if (stage < minPieces) {
+                    break;
+                }
+
+                foreach (Entry entry in this.entriesByGameStage[stage]) {
+                    if (entry.SolvedScore != null || entry.Children.Count == 0) {
+                        continue;
+                    }
+
+                    // All children must have SolvedScores for us to compute this one.
+                    if (entry.Children.All(c => c.SolvedScore != null)) {
+                        entry.SolvedScore = -entry.Children.Max(c => c.SolvedScore.Value);
+                        backfilled++;
+                    }
+                }
+            }
+
+            return backfilled;
+        }
+
+        /// <summary>
+        /// Extends a leaf entry by appending a sequence of game states (the solved endgame line)
+        /// from the leaf down to game-over, linking each as parent-child.
+        /// </summary>
+        /// <param name="leaf">The existing leaf entry to extend from.</param>
+        /// <param name="continuation">
+        /// The sequence of board states following the leaf, ending at game-over.
+        /// Does not include the leaf state itself.
+        /// </param>
+        public void ExtendLeaf(Entry leaf, IList<Tuple<OthelloNode, int?>> continuation) {
+            if (leaf == null || continuation == null) {
+                throw new ArgumentNullException();
+            }
+
+            Entry parent = leaf;
+            for (int i = 0; i < continuation.Count; i++) {
+                Entry current;
+                if (!this.TryGetEntry(continuation[i].Item1, out current)) {
+                    current = new Entry(this, continuation[i].Item1);
+                    this.AddEntry(current);
+                }
+
+                current.AddParent(parent);
+                parent.AddChild(current);
+
+                if (continuation[i].Item2 != null && current.SolvedScore == null) {
+                    current.SolvedScore = continuation[i].Item2;
+                }
+
+                parent = current;
+            }
         }
 
         #region IEnumerable<KeyValuePair<OthelloNode, int>> Members
@@ -348,12 +429,6 @@ namespace Othello {
                         Console.Write("{0:#0}%", 100.0 / entryCount * i);
                     }
 
-                    // Only add the entry if it has enough empties. Otherwise, we're so close to the endgame
-                    // that it is worthless to store the subtree.
-                    if (states[i].EmptySquareCount < SearchUtils.EndgameDepth) {
-                        continue;
-                    }
-
                     Entry entry;
                     if (!this.TryGetEntry(states[i], out entry)) {
                         entry = new Entry(this, states[i]);
@@ -438,7 +513,7 @@ namespace Othello {
                 this.Root.Children.Count == 1 ? "child" : "children");
 
             // TODO: make this iterative
-            const int iters = 6;
+            const int iters = 5;
             HashSet<Entry> children = new HashSet<Entry>() { this.Root };
             for (int i = 1; i <= iters; i++) {
                 if (children.Count == 0) {
@@ -614,24 +689,20 @@ namespace Othello {
 
                     if (this.score == null) {
                         if (this.Children.Count == 0) {
-                            // TODO: If game isn't over, perform some kind of evaluation. Or, discount this
-                            //       node completely by returning a bogus value
-                            Debug.Assert(this.State.IsGameOver || this.State.EmptySquareCount == SearchUtils.EndgameDepth);
-
                             if (this.State.IsGameOver) {
                                 this.score = this.State.PieceCountSpread();
                                 this.SolvedScore = this.score;
-                            } else {
-                                Debug.Assert(this.State.EmptySquareCount >= SearchUtils.EndgameDepth);
-
+                            } else if (this.State.EmptySquareCount <= SearchUtils.EndgameDepth) {
                                 // We can calculate the endgame score exactly.
                                 // TODO: replace Playbook.Player with static calls to MtdF search. Then, get rid of
                                 //       GetScore() and the out param
                                 Console.Write("* ");
                                 this.score = this.playbook.Player.GetScore(this.State);
                                 this.SolvedScore = this.score;
-
-                                // TODO: remove child nodes
+                            } else {
+                                throw new InvalidOperationException(
+                                    string.Format("Unexpected childless non-endgame leaf with no SolvedScore ({0} pieces).\n{1}",
+                                        this.State.OccupiedSquareCount, this.State));
                             }
                         } else {
                             // The best way to estimate the score of this board is to do a negamax search
@@ -687,7 +758,11 @@ namespace Othello {
                 Debug.Assert(this.playbook == parent.playbook);
 #if DEBUG
                 if (!parent.State.IsIsomorphicParent(this.State)) {
-                    throw new ArgumentException();
+                    throw new ArgumentException(
+                        string.Format("Parent ({0} pieces, pass={1}, gameOver={2}) is not an isomorphic parent of child ({3} pieces, pass={4}, gameOver={5}).\nParent:\n{6}\nChild:\n{7}",
+                            parent.State.OccupiedSquareCount, parent.State.Pass, parent.State.IsGameOver,
+                            this.State.OccupiedSquareCount, this.State.Pass, this.State.IsGameOver,
+                            parent.State, this.State));
                 }
 #endif
 

@@ -11,20 +11,26 @@ namespace Solver {
             this.Initialize(12);
         }
 
+        /// <summary>
+        /// A cache of child node lists to reuse during deep searches, avoiding repeated allocations.
+        /// </summary>
         public List<List<Node>> NodeCache { get; private set; }
 
         public TranspositionTable2<Node> Table { get; private set; }
 
         public int NodesEvaluated { get; set; }
 
-        public virtual void Initialize(int nodeCacheSize) {
+        public virtual void Initialize(int nodeCacheSize, bool persistTable = false) {
             if (nodeCacheSize < 0) {
                 throw new ArgumentOutOfRangeException();
             }
 
             this.NodesEvaluated = 0;
-            this.NodeCache.Clear();
-            this.Table.Clear();
+
+            if (!persistTable) {
+                this.NodeCache.Clear();
+                this.Table.Clear();
+            }
 
             while (this.NodeCache.Count < nodeCacheSize) {
                 this.NodeCache.Add(new List<Node>());

@@ -1388,7 +1388,7 @@ namespace Othello {
 
             int i = 0;
             foreach (KeyValuePair<OthelloNode, int> kvp in Playbook) {
-                if (i % (Playbook.Count / 200) == 0) {
+                if (Playbook.Count >= 200 && i % (Playbook.Count / 200) == 0) {
                     Console.SetCursorPosition(consoleLeft, consoleTop);
                     Console.Write("{0:#0.00}%", 100.0 / Playbook.Count * i);
                 }

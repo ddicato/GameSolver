@@ -42,6 +42,16 @@ namespace Othello {
             set;
         }
 
+        /// <summary>
+        /// When true, the transposition table is not cleared between SelectNode calls.
+        /// Useful when walking a solved game tree where subsequent calls benefit from
+        /// previously computed positions.
+        /// </summary>
+        public bool PersistTable {
+            get;
+            set;
+        }
+
         public MtdFPlayer(
             int depth,
             Func<OthelloNode, int> evaluator,
@@ -72,11 +82,11 @@ namespace Othello {
         }
 
         private void Initialize() {
-            this.searchParams.Initialize(this.depth);
+            this.Initialize(this.depth);
         }
 
         private void Initialize(int nodeCacheSize) {
-            this.searchParams.Initialize(nodeCacheSize);
+            this.searchParams.Initialize(nodeCacheSize, persistTable: this.PersistTable);
         }
 
         private static void OrderMovesDescending(List<Tuple<int, int>> metadata) {

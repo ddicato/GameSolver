@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
 
 using Solver;
 
@@ -11,11 +13,170 @@ namespace Othello {
         const string ParamsPath = "params.txt";
         const string PlaybookPath = "playbook.txt";
 
-        static void _Main(string[] args) {
+        static void TestMain(string[] args) {
             RunTests();
 
             Console.WriteLine("Press Enter to exit.");
             Console.ReadLine();
+        }
+
+        static void SolvePlaybookLeavesMain(string[] args) {
+            SolvePlaybookLeaves();
+
+            Console.WriteLine("Press Enter to exit.");
+            Console.ReadLine();
+        }
+
+        /// <summary>
+        /// Loads the playbook, finds all non-endgame leaf nodes, solves the endgame
+        /// from each leaf, and adds the solved game line to the playbook.
+        /// </summary>
+        static void SolvePlaybookLeaves() {
+            OthelloNode.ReadPlaybook(PlaybookPath);
+            OthelloNode.PrintPlaybookStats();
+
+            var leaves = OthelloNode.Playbook.GetUnfinishedLeaves();
+            Console.WriteLine("{0} unfinished leaf nodes found.", leaves.Count);
+
+            if (leaves.Any()) {
+                int maxSolveDepth = SearchUtils.EndgameDepth + 2;
+                int solved = 0;
+                int processed = 0;
+                int backfilled;
+                DateTime start = DateTime.Now;
+
+                // Filter leaves into solvable and non-solvable upfront.
+                var solvable = new List<OthelloPlaybook.Entry>();
+                int skipped = 0;
+                foreach (var leaf in leaves) {
+                    if (leaf.State.EmptySquareCount > maxSolveDepth) {
+                        skipped++;
+                    } else {
+                        solvable.Add(leaf);
+                    }
+                }
+
+                Console.WriteLine("{0} solvable, {1} skipped (too deep).", solvable.Count, skipped);
+
+                // Process solvable leaves in parallel batches.
+                const int batchSize = 1000;
+                for (int batchStart = 0; batchStart < solvable.Count; batchStart += batchSize) {
+                    int batchEnd = Math.Min(batchStart + batchSize, solvable.Count);
+                    var batch = solvable.GetRange(batchStart, batchEnd - batchStart);
+
+                    // Solve endgames in parallel. Each thread gets its own player.
+                    var results = new List<Tuple<OthelloNode, int?>>[batch.Count];
+                    Parallel.For(0, batch.Count, new ParallelOptions { MaxDegreeOfParallelism = 8 }, j => {
+                        var leaf = batch[j];
+                        if (leaf.Children.Count != 0) {
+                            // Gained children from another thread's ExtendLeaf (shared position).
+                            results[j] = null;
+                        } else {
+                            // Each thread creates its own player to avoid sharing the transposition table.
+                            // depth=2 for a couple iterations of move ordering before the endgame solve.
+                            var player = new MtdFPlayer(2, OthelloNode.Eval1, solveEndgame: true);
+                            results[j] = PlayOutEndgame(player, leaf.State);
+                        }
+                    });
+
+                    // Apply results to the playbook sequentially.
+                    for (int j = 0; j < batch.Count; j++) {
+                        if (results[j] != null && batch[j].Children.Count == 0) {
+                            OthelloNode.Playbook.ExtendLeaf(batch[j], results[j]);
+                            solved++;
+                        }
+                    }
+
+                    // Backfill SolvedScores on intermediate PV nodes.
+                    OthelloNode.Playbook.BackfillSolvedScores();
+
+                    processed += batch.Count;
+                    TimeSpan elapsed = DateTime.Now - start;
+                    Console.WriteLine(
+                        "Solved {0} of {1}; remaining {2}. Elapsed: {3:0.0}s => {4:0.0} solved/s",
+                        solved, solvable.Count, solvable.Count - processed,
+                        elapsed.TotalSeconds, solved / elapsed.TotalSeconds
+                    );
+
+                    if (processed % (batchSize * 10) == 0) {
+                        // Backfill SolvedScores on intermediate nodes of existing PVs.
+                        backfilled = OthelloNode.Playbook.BackfillSolvedScores();
+                        Console.WriteLine("Backfilled SolvedScore on {0} intermediate nodes.", backfilled);
+                    }
+                    if (processed % batchSize == 0) {
+                        OthelloNode.PrintPlaybookStats();
+                        OthelloNode.WritePlaybook(PlaybookPath);
+                    }
+                    if (processed % (batchSize * 10) == 0) {
+                        OthelloNode.CalculateHeuristics();
+                        OthelloNode.CalculateWeights();
+                        OthelloNode.WriteHeuristics(ParamsPath);
+                    }
+                }
+
+                // Backfill SolvedScores on intermediate nodes of existing PVs.
+                backfilled = OthelloNode.Playbook.BackfillSolvedScores();
+                Console.WriteLine("Backfilled SolvedScore on {0} intermediate nodes.", backfilled);
+
+                // Final save.
+                OthelloNode.PrintPlaybookStats();
+                OthelloNode.WritePlaybook(PlaybookPath);
+                OthelloNode.CalculateHeuristics();
+                OthelloNode.CalculateWeights();
+                OthelloNode.WriteHeuristics(ParamsPath);
+            }
+        }
+
+        /// <summary>
+        /// Plays out the endgame from the given position, using the player to select
+        /// the best move at each step. Returns the sequence of board states from the
+        /// first move after <paramref name="start"/> through game-over. The player
+        /// should have PersistTable=true so the transposition table is reused between
+        /// moves.
+        /// </summary>
+        private static List<Tuple<OthelloNode, int?>> PlayOutEndgame(MtdFPlayer player, OthelloNode start) {
+            var continuation = new List<Tuple<OthelloNode, int?>>();
+            OthelloNode current = start;
+
+            player.PersistTable = false;
+            while (!current.IsGameOver) {
+                var children = current.GetChildren();
+                if (children.Count == 0) {
+                    break;
+                }
+
+                int bestScore;
+                int index = player.SelectNode(children, out bestScore);
+
+                // After initialize is called once (ensured by the above player.persistTable = false), we want to
+                // persist the table for subsequent calls to SelectNode.
+                player.PersistTable = true;
+
+                current = children[index];
+
+                // A pass node that ends the game (double pass) doesn't represent a new
+                // board position — skip it. Set the solved score on the last real entry.
+                if (current.Pass && current.IsGameOver) {
+                    if (continuation.Count > 0) {
+                        var last = continuation[continuation.Count - 1];
+                        if (last.Item2 == null) {
+                            // Score from the last real node's perspective.
+                            continuation[continuation.Count - 1] =
+                                new Tuple<OthelloNode, int?>(last.Item1, last.Item1.PieceCountSpread());
+                        }
+                    }
+                    break;
+                }
+
+                // Only set SolvedScore on terminal nodes. Intermediate nodes will be
+                // backfilled bottom-up by BackfillSolvedScores().
+                int? solvedScore = current.IsGameOver
+                    ? current.PieceCountSpread()
+                    : (int?)null;
+                continuation.Add(new Tuple<OthelloNode, int?>(current, solvedScore));
+            }
+
+            return continuation;
         }
 
         // TODO: verbosity levels: Board, Turn, Game, GameSet, Output, None
