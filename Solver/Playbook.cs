@@ -14,9 +14,6 @@ namespace Solver {
     public class PlaybookEntry<T> {
         public List<PlaybookEntry<T>> parents;
 
-        // Paired with the transformation that makes the match valid.
-        private List<KeyValuePair<PlaybookEntry<T>, int>> children;
-
         public Playbook<T> Playbook {
             get;
             private set;
@@ -53,23 +50,6 @@ namespace Solver {
                 return this.parents == null ? 0 : this.parents.Count;
             }
         }
-
-        public int ChildCount {
-            get {
-                return this.children == null ? 0 : this.children.Count;
-            }
-        }
-
-        /* TODO: store hashset of entries instead of dict mapping state to entry
-        public override bool Equals(object obj) {
-            var other = obj as PlaybookEntry<T>;
-            return other != null && this.State.Equals(other.State);
-        }
-
-        public override int GetHashCode() {
-            return this.State.GetHashCode();
-        }
-        */
     }
 
     public class Playbook<T> {
