@@ -293,9 +293,9 @@ namespace Othello {
                 PatternClasses[i] = patternClass.ToArray();
             }
 
-            PatternClassScores = new Dictionary<int, Dictionary<ulong, Dictionary<ulong, HeuristicData>>>[PatternClasses.Length];
+            PatternClassScores = new Dictionary<PatternClassKey, HeuristicData>[PatternClasses.Length];
             for (int i = 0; i < PatternClassScores.Length; i++) {
-                PatternClassScores[i] = new Dictionary<int, Dictionary<ulong, Dictionary<ulong, HeuristicData>>>();
+                PatternClassScores[i] = new Dictionary<PatternClassKey, HeuristicData>();
             }
             PatternClassWeights = new double[PatternClasses.Length, 65];
 
@@ -319,9 +319,9 @@ namespace Othello {
             PatternClassIndices = patternClassIndices.ToArray();
             PatternTransformIndices = patternTransformIndices.ToArray();
 
-            PatternScores = new Dictionary<int, Dictionary<ulong, Dictionary<ulong, HeuristicData>>>[Patterns.Length];
+            PatternScores = new Dictionary<PatternClassKey, HeuristicData>[Patterns.Length];
             for (int i = 0; i < PatternScores.Length; i++) {
-                PatternScores[i] = new Dictionary<int, Dictionary<ulong, Dictionary<ulong, HeuristicData>>>();
+                PatternScores[i] = new Dictionary<PatternClassKey, HeuristicData>();
             }
 
             // TODO: these are equally weighted. Measure how well they correlate with victory and tune
@@ -391,31 +391,18 @@ namespace Othello {
         private static void _CalculatePatternScores() {
             for (int i = 0; i < Patterns.Length; i++) {
                 int patternClass = PatternClassIndices[i];
-                Dictionary<int, Dictionary<ulong, Dictionary<ulong, HeuristicData>>> source = PatternClassScores[patternClass];
-                Dictionary<int, Dictionary<ulong, Dictionary<ulong, HeuristicData>>> dest = PatternScores[i];
+                Dictionary<PatternClassKey, HeuristicData> source = PatternClassScores[patternClass];
+                Dictionary<PatternClassKey, HeuristicData> dest = PatternScores[i];
                 Func<ulong, ulong> transform = Transforms[PatternTransformIndices[i]];
 
                 dest.Clear();
-                foreach (int pieceCount in source.Keys) {
-                    Dictionary<ulong, Dictionary<ulong, HeuristicData>> midSource = source[pieceCount];
-                    Dictionary<ulong, Dictionary<ulong, HeuristicData>> midDest = new Dictionary<ulong, Dictionary<ulong, HeuristicData>>();
-                    dest[pieceCount] = midDest;
-
-                    // Because our board evaluator adds one score for each pattern in the class, we must divide
-                    // by the cardinality of the class in order to un-bias the weights.
-                    double weight = PatternClassWeights[patternClass, pieceCount] / PatternClasses[patternClass].Length;
-
-                    foreach (ulong self in midSource.Keys) {
-                        Dictionary<ulong, HeuristicData> innerSource = midSource[self];
-                        Dictionary<ulong, HeuristicData> innerDest = new Dictionary<ulong, HeuristicData>();
-                        midDest[transform(self)] = innerDest;
-
-                        foreach (ulong other in innerSource.Keys) {
-                            HeuristicData data = innerSource[other];
-                            data.Score = (int)Math.Round(data.CalculateScore() * weight);
-                            innerDest[transform(other)] = data;
-                        }
-                    }
+                // Because our board evaluator adds one score for each pattern in the class, we must divide
+                // by the cardinality of the class in order to un-bias the weights.
+                foreach (var kvp in source) {
+                    double weight = PatternClassWeights[patternClass, kvp.Key.PieceCount] / PatternClasses[patternClass].Length;
+                    HeuristicData data = kvp.Value;
+                    data.Score = (int)Math.Round(data.CalculateScore() * weight);
+                    dest[new PatternClassKey(kvp.Key.PieceCount, transform(kvp.Key.Self), transform(kvp.Key.Other))] = data;
                 }
             }
 
@@ -1123,11 +1110,11 @@ namespace Othello {
 
         // TODO: rename these? (also Patterns and PatternScores). Search for "PatternSets" and "pattern sets" and delete.
         public static readonly ulong[][] PatternClasses;
-        private static readonly Dictionary<int, Dictionary<ulong, Dictionary<ulong, HeuristicData>>>[] PatternClassScores;
+        private static readonly Dictionary<PatternClassKey, HeuristicData>[] PatternClassScores;
         private static readonly double[,] PatternClassWeights;
 
         private static readonly ulong[] Patterns;
-        private static readonly Dictionary<int, Dictionary<ulong, Dictionary<ulong, HeuristicData>>>[] PatternScores;
+        private static readonly Dictionary<PatternClassKey, HeuristicData>[] PatternScores;
 
         // Information for mapping between Patterns and PatternClasses
         private static readonly int[] PatternClassIndices;
@@ -1139,6 +1126,19 @@ namespace Othello {
         private static readonly Dictionary<int, Dictionary<int, HeuristicData>>[] FeatureScores;
         // TODO: add feature weights
         // TODO: abstract pattern-eval score as a feature? unify with pattern eval features?
+
+        private readonly struct PatternClassKey(int pieceCount, ulong self, ulong other) : IEquatable<PatternClassKey> {
+            public readonly int PieceCount = pieceCount;
+            public readonly ulong Self = self;
+            public readonly ulong Other = other;
+
+            public bool Equals(PatternClassKey other) =>
+                PieceCount == other.PieceCount && Self == other.Self && Other == other.Other;
+
+            public override bool Equals(object obj) => obj is PatternClassKey k && Equals(k);
+
+            public override int GetHashCode() => HashCode.Combine(PieceCount, Self, Other);
+        }
 
         private struct HeuristicData {
             public int Score; // TODO: rename this? Could be confused with Total[,Win,Loss]Score
@@ -1274,12 +1274,8 @@ namespace Othello {
 
             for (int i = 0; i < Patterns.Length; i++) {
                 ulong mask = Patterns[i];
-                Dictionary<ulong, Dictionary<ulong, HeuristicData>> mid;
-                Dictionary<ulong, HeuristicData> inner;
                 HeuristicData data;
-                if (PatternScores[i].TryGetValue(pieceCount, out mid) &&
-                    mid.TryGetValue(self & mask, out inner) &&
-                    inner.TryGetValue(other & mask, out data)) {
+                if (PatternScores[i].TryGetValue(new PatternClassKey(pieceCount, self & mask, other & mask), out data)) {
                     result += data.Score;
                 }
             }
@@ -1299,12 +1295,8 @@ namespace Othello {
                 sym.GetPair(s, out ulong self, out ulong other);
                 for (int i = 0; i < PatternClasses.Length; i++) {
                     ulong mask = PatternClasses[i][0];
-                    Dictionary<ulong, Dictionary<ulong, HeuristicData>> mid;
-                    Dictionary<ulong, HeuristicData> inner;
                     HeuristicData data;
-                    if (PatternClassScores[i].TryGetValue(pieceCount, out mid) &&
-                        mid.TryGetValue(self & mask, out inner) &&
-                        inner.TryGetValue(other & mask, out data)) {
+                    if (PatternClassScores[i].TryGetValue(new PatternClassKey(pieceCount, self & mask, other & mask), out data)) {
                         result += data.Score * PatternClassWeights[i, pieceCount] / Transforms.Length;
                     }
                 }
@@ -1360,12 +1352,7 @@ namespace Othello {
                 sym.GetPair(s, out ulong self, out ulong other);
                 for (int i = 0; i < PatternClasses.Length; i++) {
                     ulong mask = PatternClasses[i][0];
-
-                    Dictionary<ulong, Dictionary<ulong, HeuristicData>> mid;
-                    Dictionary<ulong, HeuristicData> inner;
-                    if (!PatternClassScores[i].TryGetValue(pieceCount, out mid) ||
-                        !mid.TryGetValue(self & mask, out inner) ||
-                        !inner.ContainsKey(other & mask)) {
+                    if (!PatternClassScores[i].ContainsKey(new PatternClassKey(pieceCount, self & mask, other & mask))) {
                         result++;
                     }
                 }
@@ -1440,7 +1427,7 @@ namespace Othello {
             foreach (Dictionary<int, Dictionary<int, HeuristicData>> dict in FeatureScores) {
                 dict.Clear();
             }
-            foreach (Dictionary<int, Dictionary<ulong, Dictionary<ulong, HeuristicData>>> dict in PatternClassScores) {
+            foreach (Dictionary<PatternClassKey, HeuristicData> dict in PatternClassScores) {
                 dict.Clear();
             }
 
@@ -1491,13 +1478,13 @@ namespace Othello {
         }
 
         private class TrainAccumulator {
-            public readonly Dictionary<int, Dictionary<ulong, Dictionary<ulong, HeuristicData>>>[] PatternClassScores;
+            public readonly Dictionary<PatternClassKey, HeuristicData>[] PatternClassScores;
             public readonly Dictionary<int, Dictionary<int, HeuristicData>>[] FeatureScores;
 
             public TrainAccumulator() {
-                this.PatternClassScores = new Dictionary<int, Dictionary<ulong, Dictionary<ulong, HeuristicData>>>[PatternClasses.Length];
+                this.PatternClassScores = new Dictionary<PatternClassKey, HeuristicData>[PatternClasses.Length];
                 for (int i = 0; i < this.PatternClassScores.Length; i++) {
-                    this.PatternClassScores[i] = new Dictionary<int, Dictionary<ulong, Dictionary<ulong, HeuristicData>>>();
+                    this.PatternClassScores[i] = new Dictionary<PatternClassKey, HeuristicData>();
                 }
 
                 this.FeatureScores = new Dictionary<int, Dictionary<int, HeuristicData>>[Features.Length];
@@ -1508,30 +1495,14 @@ namespace Othello {
         }
 
         private static void MergePatternClassScores(
-            Dictionary<int, Dictionary<ulong, Dictionary<ulong, HeuristicData>>>[] source) {
+            Dictionary<PatternClassKey, HeuristicData>[] source) {
             for (int i = 0; i < PatternClasses.Length; i++) {
-                foreach (var pieceCountKvp in source[i]) {
-                    Dictionary<ulong, Dictionary<ulong, HeuristicData>> globalMid;
-                    if (!PatternClassScores[i].TryGetValue(pieceCountKvp.Key, out globalMid)) {
-                        globalMid = new Dictionary<ulong, Dictionary<ulong, HeuristicData>>();
-                        PatternClassScores[i][pieceCountKvp.Key] = globalMid;
-                    }
-
-                    foreach (var midKvp in pieceCountKvp.Value) {
-                        Dictionary<ulong, HeuristicData> globalInner;
-                        if (!globalMid.TryGetValue(midKvp.Key, out globalInner)) {
-                            globalInner = new Dictionary<ulong, HeuristicData>();
-                            globalMid[midKvp.Key] = globalInner;
-                        }
-
-                        foreach (var innerKvp in midKvp.Value) {
-                            HeuristicData existing;
-                            if (globalInner.TryGetValue(innerKvp.Key, out existing)) {
-                                globalInner[innerKvp.Key] = new HeuristicData(existing, innerKvp.Value);
-                            } else {
-                                globalInner[innerKvp.Key] = innerKvp.Value;
-                            }
-                        }
+                foreach (var kvp in source[i]) {
+                    HeuristicData existing;
+                    if (PatternClassScores[i].TryGetValue(kvp.Key, out existing)) {
+                        PatternClassScores[i][kvp.Key] = new HeuristicData(existing, kvp.Value);
+                    } else {
+                        PatternClassScores[i][kvp.Key] = kvp.Value;
                     }
                 }
             }
@@ -1562,7 +1533,7 @@ namespace Othello {
         // TODO: rename this too
         private static void TrainSingle(
             OthelloNode node, int finalScore,
-            Dictionary<int, Dictionary<ulong, Dictionary<ulong, HeuristicData>>>[] patternScores,
+            Dictionary<PatternClassKey, HeuristicData>[] patternScores,
             Dictionary<int, Dictionary<int, HeuristicData>>[] featureScores) {
             int pieceCount = node.OccupiedSquareCount;
 
@@ -1571,24 +1542,13 @@ namespace Othello {
                 sym.GetPair(s, out ulong self, out ulong other);
                 for (int i = 0; i < PatternClasses.Length; i++) {
                     ulong mask = PatternClasses[i][0];
-
-                    Dictionary<ulong, Dictionary<ulong, HeuristicData>> mid;
-                    if (!patternScores[i].TryGetValue(pieceCount, out mid)) {
-                        mid = new Dictionary<ulong, Dictionary<ulong, HeuristicData>>();
-                        patternScores[i][pieceCount] = mid;
-                    }
-
-                    Dictionary<ulong, HeuristicData> inner;
-                    if (!mid.TryGetValue(self & mask, out inner)) {
-                        inner = new Dictionary<ulong, HeuristicData>();
-                        mid[self & mask] = inner;
-                    }
+                    var key = new PatternClassKey(pieceCount, self & mask, other & mask);
 
                     HeuristicData data;
-                    if (inner.TryGetValue(other & mask, out data)) {
-                        inner[other & mask] = new HeuristicData(data, finalScore);
+                    if (patternScores[i].TryGetValue(key, out data)) {
+                        patternScores[i][key] = new HeuristicData(data, finalScore);
                     } else {
-                        inner[other & mask] = new HeuristicData(finalScore);
+                        patternScores[i][key] = new HeuristicData(finalScore);
                     }
                 }
             }
@@ -1626,13 +1586,8 @@ namespace Othello {
                 }
 
                 // Average the confidence values to determine each initial weight
-                foreach (KeyValuePair<int, Dictionary<ulong, Dictionary<ulong, HeuristicData>>> kvp in PatternClassScores[i]) {
-                    int pieceCount = kvp.Key;
-                    foreach (Dictionary<ulong, HeuristicData> inner in kvp.Value.Values) {
-                        foreach (HeuristicData data in inner.Values) {
-                            PatternClassWeights[i, pieceCount] += data.Confidence;
-                        }
-                    }
+                foreach (var kvp in PatternClassScores[i]) {
+                    PatternClassWeights[i, kvp.Key.PieceCount] += kvp.Value.Confidence;
                 }
 
                 // Multiply by another confidence measure based on our coverage of the pattern valuation space
@@ -1743,22 +1698,31 @@ namespace Othello {
 #endif
                     }
 
-                    List<int> pieceCounts = PatternClassScores[i].Keys.ToList();
-                    pieceCounts.Sort();
+                    // Group flat dictionary entries by PieceCount, then by Self, to preserve file format.
+                    var grouped = new SortedDictionary<int, SortedDictionary<ulong, List<KeyValuePair<ulong, HeuristicData>>>>();
+                    foreach (var kvp in PatternClassScores[i]) {
+                        if (!grouped.TryGetValue(kvp.Key.PieceCount, out var selfGroup)) {
+                            selfGroup = new SortedDictionary<ulong, List<KeyValuePair<ulong, HeuristicData>>>();
+                            grouped[kvp.Key.PieceCount] = selfGroup;
+                        }
+                        if (!selfGroup.TryGetValue(kvp.Key.Self, out var otherList)) {
+                            otherList = new List<KeyValuePair<ulong, HeuristicData>>();
+                            selfGroup[kvp.Key.Self] = otherList;
+                        }
+                        otherList.Add(new KeyValuePair<ulong, HeuristicData>(kvp.Key.Other, kvp.Value));
+                    }
 
-                    WriteComment(writer, "Data for {0} piece counts", pieceCounts.Count);
-                    foreach (int pieceCount in pieceCounts) {
-                        writer.WriteLine("PieceCount {0}", pieceCount);
+                    WriteComment(writer, "Data for {0} piece counts", grouped.Count);
+                    foreach (var pieceCountKvp in grouped) {
+                        writer.WriteLine("PieceCount {0}", pieceCountKvp.Key);
 
-                        Dictionary<ulong, Dictionary<ulong, HeuristicData>> selfBoards = PatternClassScores[i][pieceCount];
-                        WriteComment(writer, 1, "{0} Entries", selfBoards.Count);
-                        foreach (ulong self in selfBoards.Keys) {
-                            Dictionary<ulong, HeuristicData> otherBoards = selfBoards[self];
-                            WriteComment(writer, 2, "{0} Sub-Entries", otherBoards.Count);
+                        WriteComment(writer, 1, "{0} Entries", pieceCountKvp.Value.Count);
+                        foreach (var selfKvp in pieceCountKvp.Value) {
+                            WriteComment(writer, 2, "{0} Sub-Entries", selfKvp.Value.Count);
 
-                            writer.WriteLine(self);
-                            foreach (ulong other in otherBoards.Keys) {
-                                WriteHeuristicData(writer, other, otherBoards[other]);
+                            writer.WriteLine(selfKvp.Key);
+                            foreach (var otherKvp in selfKvp.Value) {
+                                WriteHeuristicData(writer, otherKvp.Key, otherKvp.Value);
                             }
                             writer.WriteLine();
                         }
@@ -1910,32 +1874,22 @@ namespace Othello {
                     int pieceCount;
                     while (TryEatPrefix(reader, "PieceCount", out line, line) &&
                         int.TryParse(line, out pieceCount)) {
-                        Dictionary<ulong, Dictionary<ulong, HeuristicData>> mid;
-                        if (!PatternClassScores[i].TryGetValue(pieceCount, out mid)) {
-                            mid = new Dictionary<ulong, Dictionary<ulong, HeuristicData>>();
-                            PatternClassScores[i][pieceCount] = mid;
-                        }
 
                         ulong self;
                         line = NextLine(reader);
                         CheckEOF(line);
                         while (line != null && ulong.TryParse(line, out self)) {
-                            Dictionary<ulong, HeuristicData> inner;
-                            if (!mid.TryGetValue(self, out inner)) {
-                                inner = new Dictionary<ulong, HeuristicData>();
-                                mid[self] = inner;
-                            }
-
                             line = NextLine(reader);
                             CheckEOF(line);
                             foreach (string entry in line.Split((char[])null, StringSplitOptions.RemoveEmptyEntries)) {
                                 ulong other;
                                 HeuristicData orig;
                                 HeuristicData data = ParseHeuristicData(entry, ulong.Parse, out other);
-                                if (inner.TryGetValue(other, out orig)) {
-                                    inner[other] = new HeuristicData(orig, data);
+                                var key = new PatternClassKey(pieceCount, self, other);
+                                if (PatternClassScores[i].TryGetValue(key, out orig)) {
+                                    PatternClassScores[i][key] = new HeuristicData(orig, data);
                                 } else {
-                                    inner[other] = data;
+                                    PatternClassScores[i][key] = data;
                                 }
                             }
 

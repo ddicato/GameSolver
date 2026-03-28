@@ -7,10 +7,11 @@ Allocation hotspots and GC pressure — reducing object churn and unbounded grow
 1. **Playbook entries** (`OthelloPlaybook.cs:17-20`)
    Two dictionaries (`entries` + `entriesByGameStage`) grow with every unique board state. No cap or eviction.
 
-2. **Heuristic dictionaries** (`OthelloNode.cs:1063-1076`)
-   Three static arrays of 3-level nested dictionaries (`PatternClassScores`, `PatternScores`, `FeatureScores`).
-   Grow with every new pattern/piece-count combination seen during training. Cleared and rebuilt each
-   training cycle via `ClearHeuristics`, so bounded by playbook size, but still large.
+2. **Heuristic dictionaries** (`OthelloNode.cs`)
+   Static arrays of flat dictionaries (`PatternClassScores`, `PatternScores`) keyed by `PatternClassKey`
+   struct, plus `FeatureScores` (2-level nested). Grow with every new pattern/piece-count combination
+   seen during training. Cleared and rebuilt each training cycle via `ClearHeuristics`, so bounded by
+   playbook size, but still large.
 
 3. **Transposition table** (`TranspositionTable2.cs:8`)
    Plain `Dictionary<T, TableEntry>`, no size cap. Grows per search. Cleared between depths in iterative
@@ -28,9 +29,9 @@ Allocation hotspots and GC pressure — reducing object churn and unbounded grow
 6. **`Tuple<OthelloNode, int?>` in game history** (`OthelloProgram.cs`)
    Allocated per move per game during training.
 
-7. **`TrainSingle` inner dictionary creation** (`OthelloNode.cs:1506-1530`)
-   `new Dictionary<>()` allocated whenever a new piece-count or pattern key is first seen.
-   Many small dictionaries, none pre-sized.
+7. **`TrainSingle` inner dictionary creation** (`OthelloNode.cs`)
+   Previously allocated intermediate `Dictionary<>` objects for each new piece-count or pattern key.
+   Mostly resolved by flattening to `PatternClassKey`; only `FeatureScores` still has this pattern.
 
 8. **`Playbook.ToList()` in CalculateHeuristics** (`OthelloNode.cs:1393`)
    Materializes entire playbook into a `List<KeyValuePair>`. Full copy in memory alongside the
@@ -64,14 +65,15 @@ Allocation hotspots and GC pressure — reducing object churn and unbounded grow
   Effectiveness: **High** -- eliminates iterator state machine and 8 heap allocations per call
   in the most frequently executed code paths.
 
+- **`PatternClassKey` flat dictionary** (`OthelloNode.cs`)
+  Replaces 3-level nested `Dictionary<int, Dictionary<ulong, Dictionary<ulong, HeuristicData>>>`
+  with single `Dictionary<PatternClassKey, HeuristicData>` using a 20-byte readonly struct key.
+  Applied to both `PatternClassScores` and `PatternScores` arrays.
+  Effectiveness: **High** -- reduces 3 hash lookups to 1 in hot paths (`PatternScoreSlow`,
+  `PatternScore`, `TrainSingle`), eliminates hundreds of intermediate dictionary objects,
+  and improves cache locality.
+
 ## Proposed Improvements
-
-### High Impact
-
-- **Flatten 3-level PatternClassScores to single dictionary with composite key struct.**
-  `(int pieceCount, ulong self, ulong other)` as key. Cuts 3 lookups to 1, eliminates
-  intermediate dictionary objects. Better cache locality.
-  Effort: Medium.
 
 ### Medium Impact
 
