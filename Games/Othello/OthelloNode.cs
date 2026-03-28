@@ -264,8 +264,10 @@ namespace Othello {
             foreach (ulong[] patternSet in patternSets) {
                 foreach (ulong pattern in patternSet) {
                     bool found = false;
-                    foreach (ulong sym in GetSymmetries(pattern)) {
-                        if (patternClassGenerators.Contains(sym)) {
+                    BoardSymmetries sym = GetBoardSymmetries(pattern, 0);
+                    for (int s = 0; s < Transforms.Length; s++) {
+                        sym.GetPair(s, out ulong self, out _);
+                        if (patternClassGenerators.Contains(self)) {
                             found = true;
                             break;
                         }
@@ -280,9 +282,11 @@ namespace Othello {
             PatternClasses = new ulong[patternClassGenerators.Count][];
             for (int i = 0; i < PatternClasses.Length; i++) {
                 List<ulong> patternClass = new List<ulong>(8);
-                foreach (ulong sym in GetSymmetries(patternClassGenerators[i])) {
-                    if (!patternClass.Contains(sym)) {
-                        patternClass.Add(sym);
+                BoardSymmetries sym = GetBoardSymmetries(patternClassGenerators[i], 0);
+                for (int s = 0; s < Transforms.Length; s++) {
+                    sym.GetPair(s, out ulong self, out _);
+                    if (!patternClass.Contains(self)) {
+                        patternClass.Add(self);
                     }
                 }
 
@@ -446,30 +450,72 @@ namespace Othello {
         };
 
         public static IEnumerable<ulong> GetSymmetries(ulong board) {
-            foreach (Func<ulong, ulong> transform in Transforms) {
-                yield return transform(board);
+            for (int i = 0; i < Transforms.Length; i++) {
+                yield return Transforms[i](board);
             }
         }
 
         public static IEnumerable<KeyValuePair<ulong, ulong>> GetSymmetries(ulong selfBoard, ulong otherBoard) {
-            foreach (Func<ulong, ulong> transform in Transforms) {
-                yield return new KeyValuePair<ulong, ulong>(transform(selfBoard), transform(otherBoard));
+            for (int i = 0; i < Transforms.Length; i++) {
+                yield return new KeyValuePair<ulong, ulong>(Transforms[i](selfBoard), Transforms[i](otherBoard));
             }
         }
 
+        /// <summary>
+        /// Fixed-size buffer holding all 8 board symmetry pairs. Stack-allocated to avoid
+        /// iterator/heap overhead in hot paths (PatternScoreSlow, TrainSingle, UnknownPatterns).
+        /// </summary>
+        public struct BoardSymmetries {
+            public ulong Self0, Other0;
+            public ulong Self1, Other1;
+            public ulong Self2, Other2;
+            public ulong Self3, Other3;
+            public ulong Self4, Other4;
+            public ulong Self5, Other5;
+            public ulong Self6, Other6;
+            public ulong Self7, Other7;
+
+            public void GetPair(int index, out ulong self, out ulong other) {
+                switch (index) {
+                    case 0: self = Self0; other = Other0; break;
+                    case 1: self = Self1; other = Other1; break;
+                    case 2: self = Self2; other = Other2; break;
+                    case 3: self = Self3; other = Other3; break;
+                    case 4: self = Self4; other = Other4; break;
+                    case 5: self = Self5; other = Other5; break;
+                    case 6: self = Self6; other = Other6; break;
+                    case 7: self = Self7; other = Other7; break;
+                    default: throw new ArgumentOutOfRangeException(nameof(index));
+                }
+            }
+        }
+
+        public static BoardSymmetries GetBoardSymmetries(ulong selfBoard, ulong otherBoard) {
+            BoardSymmetries result;
+            result.Self0 = Transforms[0](selfBoard); result.Other0 = Transforms[0](otherBoard);
+            result.Self1 = Transforms[1](selfBoard); result.Other1 = Transforms[1](otherBoard);
+            result.Self2 = Transforms[2](selfBoard); result.Other2 = Transforms[2](otherBoard);
+            result.Self3 = Transforms[3](selfBoard); result.Other3 = Transforms[3](otherBoard);
+            result.Self4 = Transforms[4](selfBoard); result.Other4 = Transforms[4](otherBoard);
+            result.Self5 = Transforms[5](selfBoard); result.Other5 = Transforms[5](otherBoard);
+            result.Self6 = Transforms[6](selfBoard); result.Other6 = Transforms[6](otherBoard);
+            result.Self7 = Transforms[7](selfBoard); result.Other7 = Transforms[7](otherBoard);
+            return result;
+        }
+
         public static IEnumerable<OthelloNode> GetSymmetries(OthelloNode node) {
-            foreach (Func<ulong, ulong> transform in Transforms) {
-                yield return new OthelloNode(
-                    node.Turn,
-                    transform(node.PlayerBoard),
-                    transform(node.OtherBoard),
-                    node.Pass);
+            BoardSymmetries sym = GetBoardSymmetries(node.PlayerBoard, node.OtherBoard);
+            for (int s = 0; s < Transforms.Length; s++) {
+                sym.GetPair(s, out ulong self, out ulong other);
+                yield return new OthelloNode(node.Turn, self, other, node.Pass);
             }
         }
 
         public static bool IsIsomorphic(ulong self, ulong other, out int transformIndex) {
+            BoardSymmetries sym = GetBoardSymmetries(self, 0);
             for (int i = 0; i < Transforms.Length; i++) {
-                if (Transforms[i](self) == other) {
+                sym.GetPair(i, out ulong transformed, out _);
+                if (transformed == other) {
                     transformIndex = i;
                     return true;
                 }
@@ -480,11 +526,28 @@ namespace Othello {
         }
 
         public bool IsIsomorphic(OthelloNode node) {
-            return GetSymmetries(this).Any(node.Equals);
+            BoardSymmetries sym = GetBoardSymmetries(this.PlayerBoard, this.OtherBoard);
+            for (int s = 0; s < Transforms.Length; s++) {
+                sym.GetPair(s, out ulong self, out ulong other);
+                if (self == node.PlayerBoard && other == node.OtherBoard) {
+                    return true;
+                }
+            }
+            return false;
         }
 
         public bool IsIsomorphicParent(OthelloNode child) {
-            return !this.IsGameOver && this.GetChildren().Any(sibling => GetSymmetries(sibling).Any(child.Equals));
+            if (this.IsGameOver) return false;
+            foreach (OthelloNode sibling in this.GetChildren()) {
+                BoardSymmetries sym = GetBoardSymmetries(sibling.PlayerBoard, sibling.OtherBoard);
+                for (int s = 0; s < Transforms.Length; s++) {
+                    sym.GetPair(s, out ulong self, out ulong other);
+                    if (self == child.PlayerBoard && other == child.OtherBoard) {
+                        return true;
+                    }
+                }
+            }
+            return false;
         }
 
         private static ulong RotateRight(ulong board) {
@@ -1231,15 +1294,17 @@ namespace Othello {
             int pieceCount = this.OccupiedSquareCount;
             double result = 0.0;
 
-            foreach (KeyValuePair<ulong, ulong> kvp in GetSymmetries(this.PlayerBoard, this.OtherBoard)) {
+            BoardSymmetries sym = GetBoardSymmetries(this.PlayerBoard, this.OtherBoard);
+            for (int s = 0; s < Transforms.Length; s++) {
+                sym.GetPair(s, out ulong self, out ulong other);
                 for (int i = 0; i < PatternClasses.Length; i++) {
                     ulong mask = PatternClasses[i][0];
                     Dictionary<ulong, Dictionary<ulong, HeuristicData>> mid;
                     Dictionary<ulong, HeuristicData> inner;
                     HeuristicData data;
                     if (PatternClassScores[i].TryGetValue(pieceCount, out mid) &&
-                        mid.TryGetValue(kvp.Key & mask, out inner) &&
-                        inner.TryGetValue(kvp.Value & mask, out data)) {
+                        mid.TryGetValue(self & mask, out inner) &&
+                        inner.TryGetValue(other & mask, out data)) {
                         result += data.Score * PatternClassWeights[i, pieceCount] / Transforms.Length;
                     }
                 }
@@ -1290,15 +1355,17 @@ namespace Othello {
             int pieceCount = this.OccupiedSquareCount;
             int result = 0;
 
-            foreach (KeyValuePair<ulong, ulong> kvp in GetSymmetries(this.PlayerBoard, this.OtherBoard)) {
+            BoardSymmetries sym = GetBoardSymmetries(this.PlayerBoard, this.OtherBoard);
+            for (int s = 0; s < Transforms.Length; s++) {
+                sym.GetPair(s, out ulong self, out ulong other);
                 for (int i = 0; i < PatternClasses.Length; i++) {
                     ulong mask = PatternClasses[i][0];
 
                     Dictionary<ulong, Dictionary<ulong, HeuristicData>> mid;
                     Dictionary<ulong, HeuristicData> inner;
                     if (!PatternClassScores[i].TryGetValue(pieceCount, out mid) ||
-                        !mid.TryGetValue(kvp.Key & mask, out inner) ||
-                        !inner.ContainsKey(kvp.Value & mask)) {
+                        !mid.TryGetValue(self & mask, out inner) ||
+                        !inner.ContainsKey(other & mask)) {
                         result++;
                     }
                 }
@@ -1499,7 +1566,9 @@ namespace Othello {
             Dictionary<int, Dictionary<int, HeuristicData>>[] featureScores) {
             int pieceCount = node.OccupiedSquareCount;
 
-            foreach (KeyValuePair<ulong, ulong> kvp in GetSymmetries(node.PlayerBoard, node.OtherBoard)) {
+            BoardSymmetries sym = GetBoardSymmetries(node.PlayerBoard, node.OtherBoard);
+            for (int s = 0; s < Transforms.Length; s++) {
+                sym.GetPair(s, out ulong self, out ulong other);
                 for (int i = 0; i < PatternClasses.Length; i++) {
                     ulong mask = PatternClasses[i][0];
 
@@ -1510,16 +1579,16 @@ namespace Othello {
                     }
 
                     Dictionary<ulong, HeuristicData> inner;
-                    if (!mid.TryGetValue(kvp.Key & mask, out inner)) {
+                    if (!mid.TryGetValue(self & mask, out inner)) {
                         inner = new Dictionary<ulong, HeuristicData>();
-                        mid[kvp.Key & mask] = inner;
+                        mid[self & mask] = inner;
                     }
 
                     HeuristicData data;
-                    if (inner.TryGetValue(kvp.Value & mask, out data)) {
-                        inner[kvp.Value & mask] = new HeuristicData(data, finalScore);
+                    if (inner.TryGetValue(other & mask, out data)) {
+                        inner[other & mask] = new HeuristicData(data, finalScore);
                     } else {
-                        inner[kvp.Value & mask] = new HeuristicData(finalScore);
+                        inner[other & mask] = new HeuristicData(finalScore);
                     }
                 }
             }

@@ -22,26 +22,22 @@ Allocation hotspots and GC pressure — reducing object churn and unbounded grow
 
 ## Allocation Hotspots
 
-5. **`GetSymmetries` yield return** (`OthelloNode.cs:454-457`)
-   Allocates an iterator state machine + 8 `KeyValuePair<ulong, ulong>` per call. Called in
-   `PatternScoreSlow`, `UnknownPatterns`, and `TrainSingle` -- the hottest paths in the program.
-
-6. **`Tuple<int, int>` in MtdFPlayer** (`MtdFPlayer.cs:129,155`)
+5. **`Tuple<int, int>` in MtdFPlayer** (`MtdFPlayer.cs:129,155`)
    Heap-allocated `Tuple` created per move per depth in iterative deepening. Small but frequent.
 
-7. **`Tuple<OthelloNode, int?>` in game history** (`OthelloProgram.cs`)
+6. **`Tuple<OthelloNode, int?>` in game history** (`OthelloProgram.cs`)
    Allocated per move per game during training.
 
-8. **`TrainSingle` inner dictionary creation** (`OthelloNode.cs:1506-1530`)
+7. **`TrainSingle` inner dictionary creation** (`OthelloNode.cs:1506-1530`)
    `new Dictionary<>()` allocated whenever a new piece-count or pattern key is first seen.
    Many small dictionaries, none pre-sized.
 
-9. **`Playbook.ToList()` in CalculateHeuristics** (`OthelloNode.cs:1393`)
+8. **`Playbook.ToList()` in CalculateHeuristics** (`OthelloNode.cs:1393`)
    Materializes entire playbook into a `List<KeyValuePair>`. Full copy in memory alongside the
    playbook itself.
 
-10. **Playbook enumerator** (`OthelloPlaybook.cs:213`)
-    `Select` + `new KeyValuePair` per entry on every enumeration.
+9. **Playbook enumerator** (`OthelloPlaybook.cs:213`)
+   `Select` + `new KeyValuePair` per entry on every enumeration.
 
 ## Existing Mitigations
 
@@ -61,14 +57,16 @@ Allocation hotspots and GC pressure — reducing object churn and unbounded grow
 - **MemoPlayer** caching playbook lookups
   Effectiveness: **Medium** -- avoids redundant search for known positions.
 
+- **`BoardSymmetries` struct** (`OthelloNode.cs`)
+  Replaces `yield return` iterator + heap `KeyValuePair` allocations with a fixed-size
+  stack-allocated struct in hot paths (`PatternScoreSlow`, `TrainSingle`, `UnknownPatterns`)
+  and warm paths (`IsIsomorphic`, `IsIsomorphicParent`, static init).
+  Effectiveness: **High** -- eliminates iterator state machine and 8 heap allocations per call
+  in the most frequently executed code paths.
+
 ## Proposed Improvements
 
 ### High Impact
-
-- **Replace `GetSymmetries` yield-return with fixed-size array or Span.**
-  Return 8 pairs in a stack-allocated buffer instead of an iterator. Eliminates state machine +
-  heap KVP allocations in the hottest loop. Called billions of times during training/eval.
-  Effort: Low.
 
 - **Flatten 3-level PatternClassScores to single dictionary with composite key struct.**
   `(int pieceCount, ulong self, ulong other)` as key. Cuts 3 lookups to 1, eliminates
