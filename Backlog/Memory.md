@@ -23,17 +23,11 @@ Allocation hotspots and GC pressure — reducing object churn and unbounded grow
 
 ## Allocation Hotspots
 
-5. **`Tuple<int, int>` in MtdFPlayer** (`MtdFPlayer.cs:129,155`)
-   Heap-allocated `Tuple` created per move per depth in iterative deepening. Small but frequent.
-
-6. **`Tuple<OthelloNode, int?>` in game history** (`OthelloProgram.cs`)
-   Allocated per move per game during training.
-
-7. **`Playbook.ToList()` in CalculateHeuristics** (`OthelloNode.cs:1393`)
+5. **`Playbook.ToList()` in CalculateHeuristics** (`OthelloNode.cs:1393`)
    Materializes entire playbook into a `List<KeyValuePair>`. Full copy in memory alongside the
    playbook itself.
 
-8. **Playbook enumerator** (`OthelloPlaybook.cs:213`)
+6. **Playbook enumerator** (`OthelloPlaybook.cs:213`)
    `Select` + `new KeyValuePair` per entry on every enumeration.
 
 ## Existing Mitigations
@@ -69,6 +63,12 @@ Allocation hotspots and GC pressure — reducing object churn and unbounded grow
   `PatternScore`, `TrainSingle`), eliminates hundreds of intermediate dictionary objects,
   and improves cache locality.
 
+- **ValueTuple replacements** (`MtdFPlayer.cs`, `OthelloProgram.cs`, `OthelloPlaybook.cs`, `OthelloWindow.axaml.cs`)
+  `Tuple<int, int>` → `(int Index, int Score)` in MtdFPlayer iterative deepening;
+  `Tuple<OthelloNode, int?>` → `(OthelloNode Node, int? Score)` in game history.
+  Effectiveness: **Medium** (MtdFPlayer, per move per depth) / **Low** (game history, per move per game)
+  -- eliminates heap allocations for small, frequent tuples; named fields improve readability.
+
 ## Proposed Improvements
 
 ### Medium Impact
@@ -83,14 +83,7 @@ Allocation hotspots and GC pressure — reducing object churn and unbounded grow
   endgame solves.
   Effort: Medium.
 
-- **Replace `Tuple<int,int>` with ValueTuple in MtdFPlayer.**
-  `(int index, int score)` is stack-allocated, no GC. Per move per depth.
-  Effort: Trivial.
-
 ### Low Impact
-
-- **Replace `Tuple<OthelloNode, int?>` with ValueTuple in game history.**
-  Effort: Trivial.
 
 - **Remove forced `GC.Collect()` calls.**
   Let runtime manage collection timing. Avoids forced Gen2 pauses.

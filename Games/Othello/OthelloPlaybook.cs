@@ -53,7 +53,7 @@ namespace Othello {
         /// A sequence of game states in order. The second element in the tuple is the solved endgame
         /// score, if one was calculated.
         /// </param>
-        public void AddGame(IList<Tuple<OthelloNode, int?>> history) {
+        public void AddGame(IList<(OthelloNode Node, int? Score)> history) {
             if (history == null) {
                 throw new ArgumentNullException();
             }
@@ -62,25 +62,25 @@ namespace Othello {
                 throw new ArgumentException();
             }
 
-            if (!this.Root.State.Equals(history[0].Item1)) {
+            if (!this.Root.State.Equals(history[0].Node)) {
                 Console.WriteLine(
-                    OthelloNode.PrintNodes(2, true, this.Root.State, history[0].Item1, history[history.Count - 1].Item1));
+                    OthelloNode.PrintNodes(2, true, this.Root.State, history[0].Node, history[history.Count - 1].Node));
                 throw new ArgumentException();
             }
 
-            if (!history[history.Count - 1].Item1.IsGameOver) {
+            if (!history[history.Count - 1].Node.IsGameOver) {
                 Console.WriteLine(
-                    OthelloNode.PrintNodes(2, true, this.Root.State, history[history.Count - 1].Item1));
+                    OthelloNode.PrintNodes(2, true, this.Root.State, history[history.Count - 1].Node));
                 throw new ArgumentException();
             }
 
-            Debug.Assert(this.Contains(history[0].Item1));
+            Debug.Assert(this.Contains(history[0].Node));
 
             Entry parent = this.Root;
             for (int i = 1; i < history.Count; i++) {
                 Entry current;
-                if (!this.TryGetEntry(history[i].Item1, out current)) {
-                    current = new Entry(this, history[i].Item1, history[i].Item2);
+                if (!this.TryGetEntry(history[i].Node, out current)) {
+                    current = new Entry(this, history[i].Node, history[i].Score);
                     this.AddEntry(current);
                 }
 
@@ -183,7 +183,7 @@ namespace Othello {
         /// The sequence of board states following the leaf, ending at game-over.
         /// Does not include the leaf state itself.
         /// </param>
-        public void ExtendLeaf(Entry leaf, IList<Tuple<OthelloNode, int?>> continuation) {
+        public void ExtendLeaf(Entry leaf, IList<(OthelloNode Node, int? Score)> continuation) {
             if (leaf == null || continuation == null) {
                 throw new ArgumentNullException();
             }
@@ -191,16 +191,16 @@ namespace Othello {
             Entry parent = leaf;
             for (int i = 0; i < continuation.Count; i++) {
                 Entry current;
-                if (!this.TryGetEntry(continuation[i].Item1, out current)) {
-                    current = new Entry(this, continuation[i].Item1);
+                if (!this.TryGetEntry(continuation[i].Node, out current)) {
+                    current = new Entry(this, continuation[i].Node);
                     this.AddEntry(current);
                 }
 
                 current.AddParent(parent);
                 parent.AddChild(current);
 
-                if (continuation[i].Item2 != null && current.SolvedScore == null) {
-                    current.SolvedScore = continuation[i].Item2;
+                if (continuation[i].Score != null && current.SolvedScore == null) {
+                    current.SolvedScore = continuation[i].Score;
                 }
 
                 parent = current;

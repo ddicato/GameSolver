@@ -65,7 +65,7 @@ namespace Othello {
                     var batch = solvable.GetRange(batchStart, batchEnd - batchStart);
 
                     // Solve endgames in parallel. Each thread gets its own player.
-                    var results = new List<Tuple<OthelloNode, int?>>[batch.Count];
+                    var results = new List<(OthelloNode Node, int? Score)>[batch.Count];
                     Parallel.For(0, batch.Count, new ParallelOptions { MaxDegreeOfParallelism = 8 }, j => {
                         var leaf = batch[j];
                         if (leaf.Children.Count != 0) {
@@ -134,8 +134,8 @@ namespace Othello {
         /// should have PersistTable=true so the transposition table is reused between
         /// moves.
         /// </summary>
-        private static List<Tuple<OthelloNode, int?>> PlayOutEndgame(MtdFPlayer player, OthelloNode start) {
-            var continuation = new List<Tuple<OthelloNode, int?>>();
+        private static List<(OthelloNode Node, int? Score)> PlayOutEndgame(MtdFPlayer player, OthelloNode start) {
+            var continuation = new List<(OthelloNode Node, int? Score)>();
             OthelloNode current = start;
 
             player.PersistTable = false;
@@ -159,10 +159,10 @@ namespace Othello {
                 if (current.Pass && current.IsGameOver) {
                     if (continuation.Count > 0) {
                         var last = continuation[continuation.Count - 1];
-                        if (last.Item2 == null) {
+                        if (last.Score == null) {
                             // Score from the last real node's perspective.
                             continuation[continuation.Count - 1] =
-                                new Tuple<OthelloNode, int?>(last.Item1, last.Item1.PieceCountSpread());
+                                (last.Node, last.Node.PieceCountSpread());
                         }
                     }
                     break;
@@ -173,7 +173,7 @@ namespace Othello {
                 int? solvedScore = current.IsGameOver
                     ? current.PieceCountSpread()
                     : (int?)null;
-                continuation.Add(new Tuple<OthelloNode, int?>(current, solvedScore));
+                continuation.Add((current, solvedScore));
             }
 
             return continuation;
@@ -295,7 +295,7 @@ namespace Othello {
                 bool trained = false;
 
                 int result;
-                var gameHistory = new List<Tuple<OthelloNode, int?>>();
+                var gameHistory = new List<(OthelloNode Node, int? Score)>();
                 if ((i & 1) == 0) {
                     result = GameLoop(p0, p0Name, p1, p1Name, gameHistory, verbose, training);
                     if (result > 0 && (training & TrainingMode.Win) != TrainingMode.None ||
@@ -397,7 +397,7 @@ namespace Othello {
             string blackName,
             Player<OthelloNode> white,
             string whiteName,
-            List<Tuple<OthelloNode, int?>> gameHistory,
+            List<(OthelloNode Node, int? Score)> gameHistory,
             bool verbose = false,
             TrainingMode training = TrainingMode.All) {
             OthelloNode board = new OthelloNode();
@@ -407,7 +407,7 @@ namespace Othello {
                 training = TrainingMode.None;
             } else {
                 gameHistory.Clear();
-                gameHistory.Add(new Tuple<OthelloNode, int?>(board, null));
+                gameHistory.Add((board, null));
             }
 
             while (!board.IsGameOver) {
@@ -441,7 +441,7 @@ namespace Othello {
                 board = children[index];
                 if (training != TrainingMode.None) {
                     // TODO: add solved endgame score
-                    gameHistory.Add(new Tuple<OthelloNode, int?>(board, null));
+                    gameHistory.Add((board, null));
                 }
             }
 
@@ -678,7 +678,7 @@ namespace Othello {
         }
 
         // TODO: generalize and factor elsewhere?
-        private static List<Tuple<OthelloNode, int?>> GenerateRandomGame(int? seed = null) {
+        private static List<(OthelloNode Node, int? Score)> GenerateRandomGame(int? seed = null) {
             Random random;
             if (seed == null || !seed.HasValue) {
                 random = new Random();
@@ -686,10 +686,10 @@ namespace Othello {
                 random = new Random(seed.Value);
             }
 
-            var history = new List<Tuple<OthelloNode, int?>>();
+            var history = new List<(OthelloNode Node, int? Score)>();
             OthelloNode node = new OthelloNode();
             while (!node.IsGameOver) {
-                history.Add(new Tuple<OthelloNode, int?>(node, null));
+                history.Add((node, null));
                 List<OthelloNode> children = node.GetChildren();
                 if (children == null || children.Count == 0) {
                     Console.WriteLine("Error: node.IsGameOver is false but GetChildren returns no children.");
@@ -699,14 +699,14 @@ namespace Othello {
                 node = children[random.Next(children.Count)];
             }
 
-            history.Add(new Tuple<OthelloNode, int?>(node, null));
+            history.Add((node, null));
             return history;
         }
 
         private static void PrintRandomGame() {
             const int groupSize = 5;
             var history = GenerateRandomGame(12345);
-            OthelloNode[] stateHistory = history.Select(t => t.Item1).ToArray();
+            OthelloNode[] stateHistory = history.Select(t => t.Node).ToArray();
 
             Console.WriteLine("Random game history:");
             Console.WriteLine(OthelloNode.PrintNodes(groupSize, true, stateHistory));

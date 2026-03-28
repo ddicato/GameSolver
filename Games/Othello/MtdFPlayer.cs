@@ -89,9 +89,9 @@ namespace Othello {
             this.searchParams.Initialize(nodeCacheSize, persistTable: this.PersistTable);
         }
 
-        private static void OrderMovesDescending(List<Tuple<int, int>> metadata) {
+        private static void OrderMovesDescending(List<(int Index, int Score)> metadata) {
             // Reverse a and b to sort in descending order
-            metadata.Sort((a, b) => b.Item2.CompareTo(a.Item2));
+            metadata.Sort((a, b) => b.Score.CompareTo(a.Score));
         }
 
         public int GetScore(OthelloNode node) {
@@ -126,7 +126,7 @@ namespace Othello {
             int best = 0;
             bestScore = int.MinValue;
             // [(node index, score), ...]
-            List<Tuple<int, int>> metadata = nodes.Select((node, index) => new Tuple<int, int>(index, 0)).ToList();
+            List<(int Index, int Score)> metadata = nodes.Select((node, index) => (index, 0)).ToList();
             for (int depth = 1; depth <= Math.Max(1, this.depth); depth++) {
                 best = 0;
                 bestScore = int.MinValue;
@@ -143,8 +143,8 @@ namespace Othello {
 
                 DateTime start = DateTime.Now;
                 for (int i = 0; i < metadata.Count; i++) {
-                    int index = metadata[i].Item1;
-                    int score = metadata[i].Item2;
+                    int index = metadata[i].Index;
+                    int score = metadata[i].Score;
 
                     score = -SearchUtils.MtdF(this.searchParams, nodes[index], depth, score);
                     if (score > bestScore) {
@@ -152,7 +152,7 @@ namespace Othello {
                         bestScore = score;
                     }
 
-                    metadata[i] = new Tuple<int, int>(index, score);
+                    metadata[i] = (index, score);
                 }
                 TimeSpan elapsed = DateTime.Now - start;
 
@@ -184,8 +184,8 @@ namespace Othello {
                 }
 
                 DateTime start = DateTime.Now;
-                foreach (Tuple<int, int> tuple in metadata) {
-                    int index = tuple.Item1;
+                foreach ((int Index, int Score) tuple in metadata) {
+                    int index = tuple.Index;
 
                     // TODO: use a smarter first guess than 0
                     int score = -SearchUtils.MtdFEndgame(this.searchParams, nodes[index], 0);
@@ -215,7 +215,7 @@ namespace Othello {
                 if (this.ExploringPlaybook) {
                     recorded = new bool[nodes.Count];
                     for (int i = 0; i < nodes.Count; i++) {
-                        recorded[i] = OthelloNode.PlaybookContains(nodes[metadata[i].Item1]);
+                        recorded[i] = OthelloNode.PlaybookContains(nodes[metadata[i].Index]);
                         if (recorded[i]) {
                             recordedCount++;
                         }
@@ -223,8 +223,8 @@ namespace Othello {
                 }
 
                 for (int i = 0; i < metadata.Count; i++) {
-                    best = metadata[i].Item1;
-                    bestScore = metadata[i].Item2;
+                    best = metadata[i].Index;
+                    bestScore = metadata[i].Score;
 
                     // Higher means more likely to pick this node, or less likely to skip it. There is a 1 in
                     // probabiliyReciprocal chance of skipping this node.

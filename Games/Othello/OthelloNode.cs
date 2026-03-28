@@ -1404,7 +1404,7 @@ namespace Othello {
         /// from beginning to end.
         /// </param>
         /// <param name="verbose">Whether to print status information.</param>
-        public static void TrainPlaybook(List<Tuple<OthelloNode, int?>> gameHistory, bool verbose = false) {
+        public static void TrainPlaybook(List<(OthelloNode Node, int? Score)> gameHistory, bool verbose = false) {
             DateTime start = DateTime.Now;
             TimeSpan elapsed;
 

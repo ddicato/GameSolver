@@ -172,10 +172,10 @@ namespace OthelloAvalonia {
 
             if (this.board != null) {
                 int playbookCount = OthelloNode.Playbook.Count;
-                var history = new List<Tuple<OthelloNode, int?>>();
+                var history = new List<(OthelloNode Node, int? Score)>();
                 List<OthelloNode> children = new List<OthelloNode>();
                 while (!this.board.IsGameOver && !ct.IsCancellationRequested) {
-                    history.Add(new Tuple<OthelloNode, int?>(this.board, null));
+                    history.Add((this.board, null));
 
                     const int monteCarloIters = 0;
                     if (monteCarloIters > 0) {
@@ -206,7 +206,7 @@ namespace OthelloAvalonia {
 
                 if (ct.IsCancellationRequested) return;
 
-                history.Add(new Tuple<OthelloNode, int?>(this.board, null));
+                history.Add((this.board, null));
                 this.board.PrintScore();
                 Console.WriteLine();
 
