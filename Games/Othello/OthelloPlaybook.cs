@@ -422,6 +422,7 @@ namespace Othello {
                 consoleTop = Console.CursorTop;
 
                 // Second pass - create playbook entries.
+                int badSolvedScores = 0;
                 Entry[] entryArray = new Entry[entryCount];
                 for (int i = 0; i < entryCount; i++) {
                     if (i % (entryCount / 100) == 0) {
@@ -438,8 +439,12 @@ namespace Othello {
                     int? solvedScore = null;
                     if (solvedScores.TryGetValue(i, out solvedScore)) {
                         Debug.Assert(solvedScore != null);
-                        Debug.Assert(entry.SolvedScore == null || entry.SolvedScore.Value == solvedScore.Value);
-                        entry.SolvedScore = solvedScore.Value;
+                        if (solvedScore.Value < -64 || solvedScore.Value > 64) {
+                            badSolvedScores++;
+                        } else {
+                            Debug.Assert(entry.SolvedScore == null || entry.SolvedScore.Value == solvedScore.Value);
+                            entry.SolvedScore = solvedScore.Value;
+                        }
                     }
 
                     entryArray[i] = entry;
@@ -480,6 +485,10 @@ namespace Othello {
                 }
 
                 Console.Write(" | ");
+
+                if (badSolvedScores > 0) {
+                    Console.Write("WARNING: skipped {0} out-of-range SolvedScore(s). ", badSolvedScores);
+                }
             } catch (Exception ex) {
                 Console.WriteLine("error.");
                 Console.WriteLine(ex);
