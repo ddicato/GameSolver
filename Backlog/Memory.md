@@ -29,15 +29,11 @@ Allocation hotspots and GC pressure — reducing object churn and unbounded grow
 6. **`Tuple<OthelloNode, int?>` in game history** (`OthelloProgram.cs`)
    Allocated per move per game during training.
 
-7. **`TrainSingle` inner dictionary creation** (`OthelloNode.cs`)
-   Previously allocated intermediate `Dictionary<>` objects for each new piece-count or pattern key.
-   Mostly resolved by flattening to `PatternClassKey`; only `FeatureScores` still has this pattern.
-
-8. **`Playbook.ToList()` in CalculateHeuristics** (`OthelloNode.cs:1393`)
+7. **`Playbook.ToList()` in CalculateHeuristics** (`OthelloNode.cs:1393`)
    Materializes entire playbook into a `List<KeyValuePair>`. Full copy in memory alongside the
    playbook itself.
 
-9. **Playbook enumerator** (`OthelloPlaybook.cs:213`)
+8. **Playbook enumerator** (`OthelloPlaybook.cs:213`)
    `Select` + `new KeyValuePair` per entry on every enumeration.
 
 ## Existing Mitigations
@@ -68,7 +64,7 @@ Allocation hotspots and GC pressure — reducing object churn and unbounded grow
 - **`PatternClassKey` flat dictionary** (`OthelloNode.cs`)
   Replaces 3-level nested `Dictionary<int, Dictionary<ulong, Dictionary<ulong, HeuristicData>>>`
   with single `Dictionary<PatternClassKey, HeuristicData>` using a 20-byte readonly struct key.
-  Applied to both `PatternClassScores` and `PatternScores` arrays.
+  Applied to `PatternClassScores`, `PatternScores`, and `FeatureScores` arrays.
   Effectiveness: **High** -- reduces 3 hash lookups to 1 in hot paths (`PatternScoreSlow`,
   `PatternScore`, `TrainSingle`), eliminates hundreds of intermediate dictionary objects,
   and improves cache locality.
@@ -77,9 +73,9 @@ Allocation hotspots and GC pressure — reducing object churn and unbounded grow
 
 ### Medium Impact
 
-- **Pre-size inner heuristic dictionaries.**
-  Use `3^patternBitCount` for pattern dicts, 65 for piece-count dicts. Eliminates rehashing
-  during training.
+- **Pre-size heuristic dictionaries.**
+  Use estimated entry count (e.g. based on playbook size) to pre-size the flat
+  `PatternClassKey`/`FeatureKey` dictionaries. Eliminates rehashing during training.
   Effort: Low.
 
 - **Cap or use LRU eviction for TranspositionTable.**
@@ -109,8 +105,9 @@ Allocation hotspots and GC pressure — reducing object churn and unbounded grow
   Reuse and clear instead of allocating new ones each `CalculateHeuristics` call.
   Effort: Low.
 
-- **Zero out `PatternClassScores` values in place instead of `ClearHeuristics()` + rebuild.**
-  `ClearHeuristics()` calls `.Clear()` on every dictionary, discarding all allocated buckets.
-  The next training round re-creates the same hierarchy from scratch. Since the key set is
-  stable (playbook only grows), zeroing values in place avoids all the reallocation and rehashing.
+- **Zero out heuristic values in place instead of `ClearHeuristics()` + rebuild.**
+  `ClearHeuristics()` calls `.Clear()` on every dictionary, discarding allocated buckets.
+  Originally high overhead when rebuilding the 3-level nested hierarchy; now that dictionaries
+  are flat, the only savings is preserving hash table bucket allocations for a once-per-cycle
+  operation. Impact dropped to **Negligible** after `PatternClassKey`/`FeatureKey` flattening.
   Effort: Medium.

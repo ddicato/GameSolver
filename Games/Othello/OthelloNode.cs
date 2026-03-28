@@ -342,9 +342,9 @@ namespace Othello {
             };
 
             // TODO: add interpolation to training function
-            FeatureScores = new Dictionary<int, Dictionary<int, HeuristicData>>[Features.Length];
+            FeatureScores = new Dictionary<FeatureKey, HeuristicData>[Features.Length];
             for (int i = 0; i < Features.Length; i++) {
-                FeatureScores[i] = new Dictionary<int, Dictionary<int, HeuristicData>>();
+                FeatureScores[i] = new Dictionary<FeatureKey, HeuristicData>();
             }
 
             // Initialize all the pattern and feature weights to 1, calculating Patterns and PatternScores accordingly.
@@ -1123,9 +1123,21 @@ namespace Othello {
         // Additional features
         public static readonly Func<OthelloNode, int>[] Features;
         public static readonly string[] FeatureNames;
-        private static readonly Dictionary<int, Dictionary<int, HeuristicData>>[] FeatureScores;
+        private static readonly Dictionary<FeatureKey, HeuristicData>[] FeatureScores;
         // TODO: add feature weights
         // TODO: abstract pattern-eval score as a feature? unify with pattern eval features?
+
+        private readonly struct FeatureKey(int pieceCount, int value) : IEquatable<FeatureKey> {
+            public readonly int PieceCount = pieceCount;
+            public readonly int Value = value;
+
+            public bool Equals(FeatureKey other) =>
+                PieceCount == other.PieceCount && Value == other.Value;
+
+            public override bool Equals(object obj) => obj is FeatureKey k && Equals(k);
+
+            public override int GetHashCode() => HashCode.Combine(PieceCount, Value);
+        }
 
         private readonly struct PatternClassKey(int pieceCount, ulong self, ulong other) : IEquatable<PatternClassKey> {
             public readonly int PieceCount = pieceCount;
@@ -1310,10 +1322,8 @@ namespace Othello {
             int result = 0;
 
             for (int i = 0; i < Features.Length; i++) {
-                Dictionary<int, HeuristicData> inner;
                 HeuristicData data;
-                if (FeatureScores[i].TryGetValue(pieceCount, out inner) &&
-                    inner.TryGetValue(Features[i](this), out data)) {
+                if (FeatureScores[i].TryGetValue(new FeatureKey(pieceCount, Features[i](this)), out data)) {
                     result += data.Score;
                 }
             }
@@ -1366,9 +1376,7 @@ namespace Othello {
             int result = 0;
 
             for (int i = 0; i < Features.Length; i++) {
-                Dictionary<int, HeuristicData> inner;
-                if (!FeatureScores[i].TryGetValue(pieceCount, out inner) ||
-                    !inner.ContainsKey(Features[i](this))) {
+                if (!FeatureScores[i].ContainsKey(new FeatureKey(pieceCount, Features[i](this)))) {
                     result++;
                 }
             }
@@ -1424,7 +1432,7 @@ namespace Othello {
 
         // TODO: rename *Heuristics to *Params
         public static void ClearHeuristics() {
-            foreach (Dictionary<int, Dictionary<int, HeuristicData>> dict in FeatureScores) {
+            foreach (Dictionary<FeatureKey, HeuristicData> dict in FeatureScores) {
                 dict.Clear();
             }
             foreach (Dictionary<PatternClassKey, HeuristicData> dict in PatternClassScores) {
@@ -1479,7 +1487,7 @@ namespace Othello {
 
         private class TrainAccumulator {
             public readonly Dictionary<PatternClassKey, HeuristicData>[] PatternClassScores;
-            public readonly Dictionary<int, Dictionary<int, HeuristicData>>[] FeatureScores;
+            public readonly Dictionary<FeatureKey, HeuristicData>[] FeatureScores;
 
             public TrainAccumulator() {
                 this.PatternClassScores = new Dictionary<PatternClassKey, HeuristicData>[PatternClasses.Length];
@@ -1487,9 +1495,9 @@ namespace Othello {
                     this.PatternClassScores[i] = new Dictionary<PatternClassKey, HeuristicData>();
                 }
 
-                this.FeatureScores = new Dictionary<int, Dictionary<int, HeuristicData>>[Features.Length];
+                this.FeatureScores = new Dictionary<FeatureKey, HeuristicData>[Features.Length];
                 for (int i = 0; i < this.FeatureScores.Length; i++) {
-                    this.FeatureScores[i] = new Dictionary<int, Dictionary<int, HeuristicData>>();
+                    this.FeatureScores[i] = new Dictionary<FeatureKey, HeuristicData>();
                 }
             }
         }
@@ -1509,22 +1517,14 @@ namespace Othello {
         }
 
         private static void MergeFeatureScores(
-            Dictionary<int, Dictionary<int, HeuristicData>>[] source) {
+            Dictionary<FeatureKey, HeuristicData>[] source) {
             for (int i = 0; i < Features.Length; i++) {
-                foreach (var pieceCountKvp in source[i]) {
-                    Dictionary<int, HeuristicData> globalInner;
-                    if (!FeatureScores[i].TryGetValue(pieceCountKvp.Key, out globalInner)) {
-                        globalInner = new Dictionary<int, HeuristicData>();
-                        FeatureScores[i][pieceCountKvp.Key] = globalInner;
-                    }
-
-                    foreach (var innerKvp in pieceCountKvp.Value) {
-                        HeuristicData existing;
-                        if (globalInner.TryGetValue(innerKvp.Key, out existing)) {
-                            globalInner[innerKvp.Key] = new HeuristicData(existing, innerKvp.Value);
-                        } else {
-                            globalInner[innerKvp.Key] = innerKvp.Value;
-                        }
+                foreach (var kvp in source[i]) {
+                    HeuristicData existing;
+                    if (FeatureScores[i].TryGetValue(kvp.Key, out existing)) {
+                        FeatureScores[i][kvp.Key] = new HeuristicData(existing, kvp.Value);
+                    } else {
+                        FeatureScores[i][kvp.Key] = kvp.Value;
                     }
                 }
             }
@@ -1534,7 +1534,7 @@ namespace Othello {
         private static void TrainSingle(
             OthelloNode node, int finalScore,
             Dictionary<PatternClassKey, HeuristicData>[] patternScores,
-            Dictionary<int, Dictionary<int, HeuristicData>>[] featureScores) {
+            Dictionary<FeatureKey, HeuristicData>[] featureScores) {
             int pieceCount = node.OccupiedSquareCount;
 
             BoardSymmetries sym = GetBoardSymmetries(node.PlayerBoard, node.OtherBoard);
@@ -1554,19 +1554,13 @@ namespace Othello {
             }
 
             for (int i = 0; i < Features.Length; i++) {
-                int score = Features[i](node);
-
-                Dictionary<int, HeuristicData> inner;
-                if (!featureScores[i].TryGetValue(pieceCount, out inner)) {
-                    inner = new Dictionary<int, HeuristicData>();
-                    featureScores[i][pieceCount] = inner;
-                }
+                var key = new FeatureKey(pieceCount, Features[i](node));
 
                 HeuristicData data;
-                if (inner.TryGetValue(score, out data)) {
-                    inner[score] = new HeuristicData(data, finalScore);
+                if (featureScores[i].TryGetValue(key, out data)) {
+                    featureScores[i][key] = new HeuristicData(data, finalScore);
                 } else {
-                    inner[score] = new HeuristicData(finalScore);
+                    featureScores[i][key] = new HeuristicData(finalScore);
                 }
             }
         }
@@ -1667,19 +1661,25 @@ namespace Othello {
                     WriteComment(writer, "Feature {0}: {1}", i, FeatureNames[i]);
                     writer.WriteLine("Feature");
 
-                    List<int> pieceCounts = FeatureScores[i].Keys.ToList();
-                    pieceCounts.Sort();
+                    // Group flat dictionary entries by PieceCount to preserve file format.
+                    var grouped = new SortedDictionary<int, List<KeyValuePair<int, HeuristicData>>>();
+                    foreach (var kvp in FeatureScores[i]) {
+                        if (!grouped.TryGetValue(kvp.Key.PieceCount, out var list)) {
+                            list = new List<KeyValuePair<int, HeuristicData>>();
+                            grouped[kvp.Key.PieceCount] = list;
+                        }
+                        list.Add(new KeyValuePair<int, HeuristicData>(kvp.Key.Value, kvp.Value));
+                    }
 
-                    WriteComment(writer, "Data for {0} piece counts", pieceCounts.Count);
-                    foreach (int pieceCount in pieceCounts) {
-                        writer.WriteLine("PieceCount {0}", pieceCount);
+                    WriteComment(writer, "Data for {0} piece counts", grouped.Count);
+                    foreach (var pieceCountKvp in grouped) {
+                        writer.WriteLine("PieceCount {0}", pieceCountKvp.Key);
 
-                        List<int> keys = FeatureScores[i][pieceCount].Keys.ToList();
-                        keys.Sort();
+                        pieceCountKvp.Value.Sort((a, b) => a.Key.CompareTo(b.Key));
 
-                        WriteComment(writer, 1, "{0} Entries", keys.Count);
-                        foreach (int key in keys) {
-                            WriteHeuristicData(writer, key, FeatureScores[i][pieceCount][key]);
+                        WriteComment(writer, 1, "{0} Entries", pieceCountKvp.Value.Count);
+                        foreach (var kvp in pieceCountKvp.Value) {
+                            WriteHeuristicData(writer, kvp.Key, kvp.Value);
                         }
                         writer.WriteLine();
                     }
@@ -1846,22 +1846,18 @@ namespace Othello {
 
                     while (TryEatPrefix(reader, "PieceCount", out line)) {
                         int pieceCount = int.Parse(line);
-                        Dictionary<int, HeuristicData> inner;
-                        if (!FeatureScores[i].TryGetValue(pieceCount, out inner)) {
-                            inner = new Dictionary<int, HeuristicData>();
-                            FeatureScores[i][pieceCount] = inner;
-                        }
 
                         line = NextLine(reader);
                         CheckEOF(line);
                         foreach (string entry in line.Split((char[])null, StringSplitOptions.RemoveEmptyEntries)) {
-                            int key;
+                            int value;
                             HeuristicData orig;
-                            HeuristicData data = ParseHeuristicData(entry, int.Parse, out key);
-                            if (inner.TryGetValue(key, out orig)) {
-                                inner[key] = new HeuristicData(orig, data);
+                            HeuristicData data = ParseHeuristicData(entry, int.Parse, out value);
+                            var key = new FeatureKey(pieceCount, value);
+                            if (FeatureScores[i].TryGetValue(key, out orig)) {
+                                FeatureScores[i][key] = new HeuristicData(orig, data);
                             } else {
-                                inner[key] = data;
+                                FeatureScores[i][key] = data;
                             }
                         }
                     }
