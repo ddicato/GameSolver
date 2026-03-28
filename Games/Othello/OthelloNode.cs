@@ -1,11 +1,14 @@
 ﻿//#define VERBOSE_PARAM_SERIALIZATION
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
 
 using Solver;
 
@@ -230,7 +233,7 @@ namespace Othello {
 
             #endregion
 
-            // TODO: Get rid of above patterhs and hard-code just a few pattern classes here.
+            // TODO: Get rid of above patterns and hard-code just a few pattern classes here.
             // TODO: update comment
             // Store non-overlapping groups of patterns. Used for fast board evaluation.
             // TODO: flaw: Scores for pattern valuations with all zeros are shared among patterns. So
@@ -1381,28 +1384,119 @@ namespace Othello {
         public static void CalculateHeuristics() {
             DateTime start = DateTime.Now;
             Console.Write("Calculating feature values... ");
-            int consoleLeft = Console.CursorLeft;
-            int consoleTop = Console.CursorTop;
 
             ClearHeuristics();
 
-            int i = 0;
-            foreach (KeyValuePair<OthelloNode, int> kvp in Playbook) {
-                if (Playbook.Count >= 200 && i % (Playbook.Count / 200) == 0) {
-                    Console.SetCursorPosition(consoleLeft, consoleTop);
-                    Console.Write("{0:#0.00}%", 100.0 / Playbook.Count * i);
-                }
+            // Materialize playbook entries to avoid lazy Score evaluation during parallel iteration.
+            var entries = Playbook.ToList();
+            int processed = 0;
 
-                TrainSingle(kvp.Key, kvp.Value * ScoreMultiplier);
-                i++;
-            }
+            Parallel.ForEach(
+                Partitioner.Create(0, entries.Count),
+                new ParallelOptions { MaxDegreeOfParallelism = 8 },
+                // Thread-local initializer: create empty accumulators.
+                () => new TrainAccumulator(),
+                // Body: accumulate into thread-local dictionaries.
+                (range, loopState, local) => {
+                    for (int i = range.Item1; i < range.Item2; i++) {
+                        TrainSingle(entries[i].Key, entries[i].Value * ScoreMultiplier,
+                            local.PatternClassScores, local.FeatureScores);
+                    }
+
+                    int done = Interlocked.Add(ref processed, range.Item2 - range.Item1);
+                    if (entries.Count >= 200 && done % (entries.Count / 20) < (range.Item2 - range.Item1)) {
+                        Console.Write("{0:#0}% ", 100.0 / entries.Count * done);
+                    }
+
+                    return local;
+                },
+                // Thread-local finalizer: merge into global dictionaries.
+                (local) => {
+                    lock (PatternClassScores) {
+                        MergePatternClassScores(local.PatternClassScores);
+                        MergeFeatureScores(local.FeatureScores);
+                    }
+                }
+            );
 
             TimeSpan elapsed = DateTime.Now - start;
             Console.WriteLine("done. Time elapsed = {0:0.000} seconds.", elapsed.TotalSeconds);
         }
 
+        private class TrainAccumulator {
+            public readonly Dictionary<int, Dictionary<ulong, Dictionary<ulong, HeuristicData>>>[] PatternClassScores;
+            public readonly Dictionary<int, Dictionary<int, HeuristicData>>[] FeatureScores;
+
+            public TrainAccumulator() {
+                this.PatternClassScores = new Dictionary<int, Dictionary<ulong, Dictionary<ulong, HeuristicData>>>[PatternClasses.Length];
+                for (int i = 0; i < this.PatternClassScores.Length; i++) {
+                    this.PatternClassScores[i] = new Dictionary<int, Dictionary<ulong, Dictionary<ulong, HeuristicData>>>();
+                }
+
+                this.FeatureScores = new Dictionary<int, Dictionary<int, HeuristicData>>[Features.Length];
+                for (int i = 0; i < this.FeatureScores.Length; i++) {
+                    this.FeatureScores[i] = new Dictionary<int, Dictionary<int, HeuristicData>>();
+                }
+            }
+        }
+
+        private static void MergePatternClassScores(
+            Dictionary<int, Dictionary<ulong, Dictionary<ulong, HeuristicData>>>[] source) {
+            for (int i = 0; i < PatternClasses.Length; i++) {
+                foreach (var pieceCountKvp in source[i]) {
+                    Dictionary<ulong, Dictionary<ulong, HeuristicData>> globalMid;
+                    if (!PatternClassScores[i].TryGetValue(pieceCountKvp.Key, out globalMid)) {
+                        globalMid = new Dictionary<ulong, Dictionary<ulong, HeuristicData>>();
+                        PatternClassScores[i][pieceCountKvp.Key] = globalMid;
+                    }
+
+                    foreach (var midKvp in pieceCountKvp.Value) {
+                        Dictionary<ulong, HeuristicData> globalInner;
+                        if (!globalMid.TryGetValue(midKvp.Key, out globalInner)) {
+                            globalInner = new Dictionary<ulong, HeuristicData>();
+                            globalMid[midKvp.Key] = globalInner;
+                        }
+
+                        foreach (var innerKvp in midKvp.Value) {
+                            HeuristicData existing;
+                            if (globalInner.TryGetValue(innerKvp.Key, out existing)) {
+                                globalInner[innerKvp.Key] = new HeuristicData(existing, innerKvp.Value);
+                            } else {
+                                globalInner[innerKvp.Key] = innerKvp.Value;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        private static void MergeFeatureScores(
+            Dictionary<int, Dictionary<int, HeuristicData>>[] source) {
+            for (int i = 0; i < Features.Length; i++) {
+                foreach (var pieceCountKvp in source[i]) {
+                    Dictionary<int, HeuristicData> globalInner;
+                    if (!FeatureScores[i].TryGetValue(pieceCountKvp.Key, out globalInner)) {
+                        globalInner = new Dictionary<int, HeuristicData>();
+                        FeatureScores[i][pieceCountKvp.Key] = globalInner;
+                    }
+
+                    foreach (var innerKvp in pieceCountKvp.Value) {
+                        HeuristicData existing;
+                        if (globalInner.TryGetValue(innerKvp.Key, out existing)) {
+                            globalInner[innerKvp.Key] = new HeuristicData(existing, innerKvp.Value);
+                        } else {
+                            globalInner[innerKvp.Key] = innerKvp.Value;
+                        }
+                    }
+                }
+            }
+        }
+
         // TODO: rename this too
-        private static void TrainSingle(OthelloNode node, int finalScore) {
+        private static void TrainSingle(
+            OthelloNode node, int finalScore,
+            Dictionary<int, Dictionary<ulong, Dictionary<ulong, HeuristicData>>>[] patternScores,
+            Dictionary<int, Dictionary<int, HeuristicData>>[] featureScores) {
             int pieceCount = node.OccupiedSquareCount;
 
             foreach (KeyValuePair<ulong, ulong> kvp in GetSymmetries(node.PlayerBoard, node.OtherBoard)) {
@@ -1410,9 +1504,9 @@ namespace Othello {
                     ulong mask = PatternClasses[i][0];
 
                     Dictionary<ulong, Dictionary<ulong, HeuristicData>> mid;
-                    if (!PatternClassScores[i].TryGetValue(pieceCount, out mid)) {
+                    if (!patternScores[i].TryGetValue(pieceCount, out mid)) {
                         mid = new Dictionary<ulong, Dictionary<ulong, HeuristicData>>();
-                        PatternClassScores[i][pieceCount] = mid;
+                        patternScores[i][pieceCount] = mid;
                     }
 
                     Dictionary<ulong, HeuristicData> inner;
@@ -1434,9 +1528,9 @@ namespace Othello {
                 int score = Features[i](node);
 
                 Dictionary<int, HeuristicData> inner;
-                if (!FeatureScores[i].TryGetValue(pieceCount, out inner)) {
+                if (!featureScores[i].TryGetValue(pieceCount, out inner)) {
                     inner = new Dictionary<int, HeuristicData>();
-                    FeatureScores[i][pieceCount] = inner;
+                    featureScores[i][pieceCount] = inner;
                 }
 
                 HeuristicData data;
@@ -2002,13 +2096,13 @@ namespace Othello {
                 return;
             }
 
-            Console.Write("Final Score: {0}", this.Score);
+            Console.Write("Final Score: {0} ", this.Score);
             if (this.Score > 0) {
-                Console.WriteLine(" ({0} beats {1})", blackName, whiteName);
+                Console.WriteLine("({0} beats {1})", blackName, whiteName);
             } else if (this.Score < 0) {
-                Console.WriteLine(" ({0} beats {1})", whiteName, blackName);
+                Console.WriteLine("({0} beats {1})", whiteName, blackName);
             } else {
-                Console.WriteLine(" (The game is a draw)");
+                Console.WriteLine("(The game is a draw)");
             }
         }
 
