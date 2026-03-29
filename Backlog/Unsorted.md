@@ -12,7 +12,6 @@
 - Show how long each game took in OthelloProgram.
 - Each player can load a different params and playbook file, for comparison and possibly coevolutionary learning.
 - Read config params (e.g. randomGames/selfGames/adversarialGames, memoize/explore) from a file and/or command line. Might also want to change during program execution.
-- Add move ordering to `AlphaBetaEndgame` and `MtdFEndgame`. (Currently only exists at root level for MtdF)
 - Build a playbook visualizer.
 
 ## Refactoring

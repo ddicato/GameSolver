@@ -12,8 +12,7 @@ namespace Othello {
         public const int EndgameDepth = 11;
         public const int EndgameDepthDiff = 6;
 
-        public static int MtdF<Node>(SearchParams<Node> searchParams, Node node, int depth, int firstGuess)
-            where Node : TwoPlayerNode<Node> {
+        public static int MtdF(OthelloSearchParams searchParams, OthelloNode node, int depth, int firstGuess) {
             int guess = firstGuess;
             int maxScore = int.MaxValue;
             int minScore = -int.MaxValue; // used instead of int.MinValue, which isn't negatable
@@ -31,8 +30,7 @@ namespace Othello {
             return guess;
         }
 
-        public static int MtdFEndgame<Node>(SearchParams<Node> searchParams, Node node, int firstGuess)
-            where Node : TwoPlayerNode<Node> {
+        public static int MtdFEndgame(OthelloSearchParams searchParams, OthelloNode node, int firstGuess) {
             int guess = firstGuess;
             int maxScore = int.MaxValue;
             int minScore = -int.MaxValue; // used instead of int.MinValue, which isn't negatable
@@ -50,8 +48,7 @@ namespace Othello {
             return guess;
         }
 
-        public static int AlphaBeta<Node>(SearchParams<Node> searchParams, Node node, int depth, int alpha, int beta)
-            where Node : TwoPlayerNode<Node> {
+        public static int AlphaBeta(OthelloSearchParams searchParams, OthelloNode node, int depth, int alpha, int beta) {
             int minScore, maxScore;
             if (searchParams.Table.TryGetValue(node, out minScore, out maxScore)) {
                 if (minScore >= beta) {
@@ -69,7 +66,7 @@ namespace Othello {
                 gamma = searchParams.Evaluate(node);
             } else {
                 while (searchParams.NodeCache.Count < depth) {
-                    searchParams.NodeCache.Add(new List<Node>());
+                    searchParams.NodeCache.Add(new List<OthelloNode>());
                 }
                 var children = searchParams.NodeCache[depth - 1];
                 node.GetChildren(children);
@@ -79,12 +76,51 @@ namespace Othello {
                 } else {
                     gamma = -int.MaxValue; // used instead of int.MinValue, which isn't negatable
                     int a = alpha;
-                    foreach (Node child in children) {
-                        gamma = Math.Max(gamma, -AlphaBeta(searchParams, child, depth - 1, -beta, -a));
-                        if (gamma >= beta) {
-                            break;
+                    int cutoffIndex = -1;
+
+                    // Find which children (if any) match the killer moves for this depth
+                    int killerChildIndex0 = -1, killerChildIndex1 = -1;
+                    ulong killer0 = searchParams.KillerMoves[depth, 0];
+                    ulong killer1 = searchParams.KillerMoves[depth, 1];
+                    if (killer0 != 0 || killer1 != 0) {
+                        ulong nodeOccupied = node.Occupied;
+                        for (int i = 0; i < children.Count; i++) {
+                            ulong moveSquare = children[i].Occupied ^ nodeOccupied;
+                            if (moveSquare == killer0 && killer0 != 0) killerChildIndex0 = i;
+                            else if (moveSquare == killer1 && killer1 != 0) killerChildIndex1 = i;
                         }
+                    }
+
+                    // Search killer moves first
+                    if (killerChildIndex0 >= 0) {
+                        int score = -AlphaBeta(searchParams, children[killerChildIndex0], depth - 1, -beta, -a);
+                        if (score > gamma) { gamma = score; cutoffIndex = killerChildIndex0; }
                         a = Math.Max(a, gamma);
+                    }
+                    if (gamma < beta && killerChildIndex1 >= 0) {
+                        int score = -AlphaBeta(searchParams, children[killerChildIndex1], depth - 1, -beta, -a);
+                        if (score > gamma) { gamma = score; cutoffIndex = killerChildIndex1; }
+                        a = Math.Max(a, gamma);
+                    }
+
+                    // Search remaining children
+                    if (gamma < beta) {
+                        for (int i = 0; i < children.Count; i++) {
+                            if (i == killerChildIndex0 || i == killerChildIndex1) continue;
+                            int score = -AlphaBeta(searchParams, children[i], depth - 1, -beta, -a);
+                            if (score > gamma) { gamma = score; cutoffIndex = i; }
+                            if (gamma >= beta) break;
+                            a = Math.Max(a, gamma);
+                        }
+                    }
+
+                    // Record the cutoff move as a killer for this depth
+                    if (gamma >= beta && cutoffIndex >= 0) {
+                        ulong cutoffSquare = children[cutoffIndex].Occupied ^ node.Occupied;
+                        if (cutoffSquare != 0 && cutoffSquare != searchParams.KillerMoves[depth, 0]) {
+                            searchParams.KillerMoves[depth, 1] = searchParams.KillerMoves[depth, 0];
+                            searchParams.KillerMoves[depth, 0] = cutoffSquare;
+                        }
                     }
                 }
             }
@@ -103,8 +139,7 @@ namespace Othello {
             return gamma;
         }
 
-        public static int AlphaBetaEndgame<Node>(SearchParams<Node> searchParams, Node node, int currentDepth, int alpha, int beta)
-            where Node : TwoPlayerNode<Node> {
+        public static int AlphaBetaEndgame(OthelloSearchParams searchParams, OthelloNode node, int currentDepth, int alpha, int beta) {
             int minScore, maxScore;
             if (searchParams.Table.TryGetValue(node, out minScore, out maxScore)) {
                 if (minScore >= beta) {
@@ -117,7 +152,7 @@ namespace Othello {
             }
 
             while (searchParams.NodeCache.Count <= currentDepth) {
-                searchParams.NodeCache.Add(new List<Node>());
+                searchParams.NodeCache.Add(new List<OthelloNode>());
             }
             var children = searchParams.NodeCache[currentDepth];
 
@@ -130,12 +165,54 @@ namespace Othello {
             } else {
                 gamma = -int.MaxValue; // used instead of int.MinValue, which isn't negatable
                 int a = alpha;
-                foreach (Node child in children) {
-                    gamma = Math.Max(gamma, -AlphaBetaEndgame(searchParams, child, currentDepth + 1, -beta, -a));
-                    if (gamma >= beta) {
-                        break;
+                int cutoffIndex = -1;
+
+                // Find which children (if any) match the killer moves for this depth
+                int killerChildIndex0 = -1, killerChildIndex1 = -1;
+                int killerDepth = currentDepth;
+                if (killerDepth < searchParams.KillerMoves.GetLength(0)) {
+                    ulong killer0 = searchParams.KillerMoves[killerDepth, 0];
+                    ulong killer1 = searchParams.KillerMoves[killerDepth, 1];
+                    if (killer0 != 0 || killer1 != 0) {
+                        ulong nodeOccupied = node.Occupied;
+                        for (int i = 0; i < children.Count; i++) {
+                            ulong moveSquare = children[i].Occupied ^ nodeOccupied;
+                            if (moveSquare == killer0 && killer0 != 0) killerChildIndex0 = i;
+                            else if (moveSquare == killer1 && killer1 != 0) killerChildIndex1 = i;
+                        }
                     }
+                }
+
+                // Search killer moves first
+                if (killerChildIndex0 >= 0) {
+                    int score = -AlphaBetaEndgame(searchParams, children[killerChildIndex0], currentDepth + 1, -beta, -a);
+                    if (score > gamma) { gamma = score; cutoffIndex = killerChildIndex0; }
                     a = Math.Max(a, gamma);
+                }
+                if (gamma < beta && killerChildIndex1 >= 0) {
+                    int score = -AlphaBetaEndgame(searchParams, children[killerChildIndex1], currentDepth + 1, -beta, -a);
+                    if (score > gamma) { gamma = score; cutoffIndex = killerChildIndex1; }
+                    a = Math.Max(a, gamma);
+                }
+
+                // Search remaining children
+                if (gamma < beta) {
+                    for (int i = 0; i < children.Count; i++) {
+                        if (i == killerChildIndex0 || i == killerChildIndex1) continue;
+                        int score = -AlphaBetaEndgame(searchParams, children[i], currentDepth + 1, -beta, -a);
+                        if (score > gamma) { gamma = score; cutoffIndex = i; }
+                        if (gamma >= beta) break;
+                        a = Math.Max(a, gamma);
+                    }
+                }
+
+                // Record the cutoff move as a killer for this depth
+                if (gamma >= beta && cutoffIndex >= 0 && killerDepth < searchParams.KillerMoves.GetLength(0)) {
+                    ulong cutoffSquare = children[cutoffIndex].Occupied ^ node.Occupied;
+                    if (cutoffSquare != 0 && cutoffSquare != searchParams.KillerMoves[killerDepth, 0]) {
+                        searchParams.KillerMoves[killerDepth, 1] = searchParams.KillerMoves[killerDepth, 0];
+                        searchParams.KillerMoves[killerDepth, 0] = cutoffSquare;
+                    }
                 }
             }
 

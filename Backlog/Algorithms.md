@@ -26,6 +26,41 @@ Available since .NET 6. In `TrainSingle`, each update does a `TryGetValue` follo
 
 `Entry.Score` uses lazy recursive evaluation — each entry calls `-Children.Max(e => e.Score)` on demand. During `CalculateHeuristics`, the playbook is materialized to a list, but score evaluation still triggers recursive descent. A topological sort (leaves first) with an explicit bottom-up pass would avoid recursion depth issues and make evaluation predictable.
 
+## Move Ordering in AlphaBeta / AlphaBetaEndgame
+
+Currently, move ordering only exists at the root level of `MtdFPlayer.SelectNode()` — iterative deepening scores from the previous depth guide the next iteration's ordering via `OrderMovesDescending`. Inside the tree (`AlphaBeta` in `SearchUtils.cs:82` and `AlphaBetaEndgame` in `SearchUtils.cs:133`), children are iterated in fixed spatial board order with no ordering.
+
+### ~~Store best move in transposition table~~ — *Tested, not effective with MTD(f)*
+
+Implemented and benchmarked: added `BestMove` field to `TranspositionTable2.TableEntry`, probed in `AlphaBeta` and `AlphaBetaEndgame` to try the PV move first. **Result:** node counts reduced < 2%, but per-node throughput dropped 12–21% due to overhead (Equals check per child to skip duplicate, larger TT entries hurting cache). Net negative on wall-clock time.
+
+**Why it doesn't help MTD(f):** MTD(f) uses zero-window alpha-beta calls. The TT bounds already provide most of the pruning — the best move from one zero-window call isn't necessarily best for the next call with a different bound. TT best move ordering is most effective with wide-window alpha-beta, which MTD(f) avoids by design.
+
+May be worth revisiting if the search framework changes to use wider windows (e.g., PVS/NegaScout instead of MTD(f)). Note: only benchmarked during iterative deepening, not the endgame solver (`MtdFEndgame` / `AlphaBetaEndgame`) — deeper endgame trees with more TT reuse could behave differently.
+
+### ~~Killer moves~~ *(done — positive results)*
+
+Two killer move slots per depth, stored as `ulong` square bitmasks in `OthelloSearchParams.KillerMoves[depth, slot]`. On beta cutoff, the move square is recorded; on entry, children matching a killer are searched first. Killers persist across MTD(f) zero-window iterations within the same iterative deepening depth, then cleared.
+
+**Results:** 9–24% node reduction in early-game searches, with negligible throughput overhead. Effect grows as the game progresses — opening positions see little benefit, but by move 5–6 searches see up to 24% fewer nodes. Wall-clock improvement of ~18% on the largest early-game searches. Unlike TT best move, killer moves depend on cutoff frequency rather than score values, making them well-suited to MTD(f)'s zero-window architecture. These results were measured during iterative deepening only; endgame solving with deeper trees and more positional repetition may see even larger gains.
+
+### History heuristic — *Medium impact*
+
+Maintain a table of `(from, to) → cumulative depth²` across the entire search, incremented when a move causes a cutoff. Sort non-TT, non-killer moves by history score. Improves ordering of "quiet" moves that don't show up in the TT or killer slots. Can be decayed between iterative deepening iterations.
+
+### Quick static ordering — *Low impact*
+
+Pre-sort children by a cheap heuristic before searching: corners first, then edges, then mobility count. Simplest to implement but least effective compared to search-informed techniques. Mostly useful as a tiebreaker when other signals are absent.
+
+### Depth cutoff for ordering overhead
+
+Move ordering has overhead (sorting, lookups). At shallow remaining depths the search is fast enough that overhead isn't worth it:
+
+- **TT best move:** Not effective with MTD(f) zero-window searches (see above).
+- **Killer moves:** Useful at depth >= 2. At depth 1, children are about to be evaluated directly.
+- **Full sorting** (history, static): Useful at depth >= 3–4. Below that, Othello's average branching factor (~8–10) means sorting a small list for minimal savings.
+- **Endgame:** Move ordering matters *more* here because trees are deeper. TT best move and killer moves are especially valuable in `AlphaBetaEndgame`.
+
 ## PatternScoreSlow
 
 `PatternScoreSlow` is the evaluation function used during search. It iterates all 8 symmetries, performs 3 nested dictionary lookups per pattern class per symmetry, and divides by `Transforms.Length` (8) at query time.
