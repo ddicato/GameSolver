@@ -1227,12 +1227,22 @@ namespace Othello {
             }
 
             public int CalculateScore() {
-                return (int)Math.Round(this.TotalScore / this.Count);
+                const double k = 8.0; // Bayesian pseudocount — regularizes toward winProb=0.5 (logit=0)
 
-                //\\// TODO: replace with winning probability? The following is used in the literature:
-                // wins + draws/2 = wins + (games - wins - losses)/2 = (games + wins - losses)/2
-                //double effectiveWinCount = ((double)this.Count - this.LossCount + this.WinCount) * 0.5;
-                //return (int)Math.Round((effectiveWinCount + 0.5) / (this.Count + 1.0) * ScoreMultipllier);
+                double n = this.Count;
+                double draws = n - this.WinCount - this.LossCount;
+                double adjWins = this.WinCount + draws / 2.0;
+                double winProb = (adjWins + k / 2.0) / (n + k);
+
+                // Clamp to avoid log(0); at 10000 samples the clamp never activates
+                winProb = Math.Clamp(winProb, 0.0001, 0.9999);
+
+                // Log-odds: maps [0,1] to (-inf,+inf), with 0.5 -> 0.
+                // The weighted sum in PatternScoreSlow becomes a logistic regression
+                // combination, where evidence from independent patterns accumulates correctly.
+                double logOdds = Math.Log(winProb / (1.0 - winProb));
+
+                return (int)Math.Round(logOdds * ScoreMultiplier);
             }
 
             public static double Sigmoid(double x) {
@@ -1405,7 +1415,7 @@ namespace Othello {
         // TODO: more and better learning algorithms: Gradient descent, Temporal-difference
 
         // Score will be stored as an int, so we multiply to get more significant digits.
-        private const int ScoreMultiplier = 10000; // TODO: serialize this so it is changeable
+        private const int ScoreMultiplier = 100; // TODO: serialize this so it is changeable
 
         public static OthelloPlaybook Playbook;
 

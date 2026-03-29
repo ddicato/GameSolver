@@ -13,8 +13,94 @@ Games are played. After each batch, `CalculateHeuristics()` iterates every playb
 - **Confidence is disabled** (returns 1.0), so all pattern classes are weighted equally regardless of sample quality.
 - **Full rebuild each round:** heuristics are cleared and recomputed from the entire playbook every training cycle.
 - **Score = simple average:** doesn't account for recency, opponent strength, or how decisive the pattern was.
+- **No regularization:** low-count patterns (seen 1–2 times) get the same treatment as patterns seen thousands of times, making the eval noisy for rare positions.
 
-## Better Strategies
+## CalculateScore Improvements
+
+These improve how `HeuristicData.CalculateScore()` converts the per-pattern stats (Count, WinCount, LossCount, TotalWinScore, TotalLossScore, TotalScore) into a single score value. They are drop-in replacements that don't require changes to training or the playbook.
+
+### Probability-Weighted Expected Margin (recommended first step)
+
+Separate the two questions the current simple average conflates: "how often does this pattern win?" and "by how much?" Combine a Bayesian win probability estimate with the average margin conditioned on outcome:
+
+```
+draws = Count - WinCount - LossCount
+adjWins = WinCount + draws / 2
+winProb = (adjWins + k/2) / (Count + k)         // Bayesian, shrinks toward 0.5
+avgWinMargin = TotalWinScore / Max(WinCount, 1)
+avgLossMargin = TotalLossScore / Max(LossCount, 1)  // negative
+score = winProb * avgWinMargin + (1 - winProb) * avgLossMargin
+```
+
+The pseudocount `k` (~ 5–10, tune empirically) regularizes low-count patterns toward 0. This uses all the data already tracked in `HeuristicData` and naturally handles the asymmetry where losses tend to have larger magnitude than wins.
+
+### Win Probability Model
+
+Predict probability of winning rather than raw piece-count spread. This is what strong Othello engines (Edax, Zebra) do, and the commented-out code in `CalculateScore()` was heading toward.
+
+```
+draws = Count - WinCount - LossCount
+effectiveWins = WinCount + draws / 2
+winProbability = effectiveWins / Count
+score = winProbability * ScoreMultiplier    // map [0,1] → integer range
+```
+
+Raw spread averaging is noisy — a +20 blowout and a +2 squeaker both count as "good" but the blowout distorts the mean. Win probability treats them equally, better reflecting what the search cares about (find the move that wins most often).
+
+### Bayesian Regularization
+
+Add a prior that pulls low-count estimates toward zero:
+
+```
+score = TotalScore / (Count + pseudoCount)
+```
+
+A pattern seen 2 times with scores +10, +12 gets Score=11 under simple averaging, which looks great but is unreliable. With pseudoCount ~ 5–10, this shrinks toward neutral. One line of code. Composes with any of the other scoring approaches.
+
+### Wilson Score Lower Bound
+
+For the win-probability variant, use the lower bound of a confidence interval instead of the raw win rate:
+
+```
+p = effectiveWins / Count
+z = 1.0  // ~68% confidence, tune this
+wilsonLower = (p + z²/(2n) - z * sqrt(p(1-p)/n + z²/(4n²))) / (1 + z²/n)
+```
+
+Naturally penalizes low-sample patterns without needing an explicit pseudocount. Well-known technique from ranking systems (Reddit, Yelp, etc.).
+
+## PatternScoreSlow Combination
+
+`PatternScoreSlow` combines per-pattern scores via weighted sum: `Σ data.Score * weight / 8`. With log-odds scoring (see above), this sum is a logistic regression — evidence from independent patterns accumulates correctly.
+
+### Two-Track Expected Margin Estimation (tried, rejected for performance)
+
+Instead of returning raw log-odds, compute an expected piece-count margin by running two parallel tracks during the `PatternScoreSlow` loop:
+
+1. **Win/loss log-odds tracks**: For each pattern, compute per-pattern win and loss probabilities (Dirichlet prior with k/3 per W/D/L outcome), convert to log-odds, and accumulate weighted sums independently.
+2. **Margin track**: Weighted average of per-pattern `TotalWinScore/WinCount` and `TotalLossScore/LossCount`.
+
+After the loop, convert the two log-odds sums to probabilities via logistic sigmoid, normalize so W+D+L=1, then combine: `winProb * avgWinMargin + lossProb * avgLossMargin`.
+
+This gives an expected margin in piece-count-spread units with principled probability combination. However, it was **over 50% slower** than the simple log-odds sum due to the extra per-pattern `Math.Log` calls (two instead of zero — `data.Score` already contains log-odds), the `Math.Clamp` calls, and the additional running sums. Since `PatternScoreSlow` is the innermost function in the search, this is a significant cost. The pure log-odds approach is preferred unless margin information proves necessary for search quality.
+
+## CalculateWeights / Confidence Improvements
+
+### Re-enable and Fix Confidence
+
+The disabled `Confidence` property (returns 1.0) was trying to weight patterns by how decisive they are. The old implementation had issues: it was unsigned (didn't account for direction) and used an unusual double-sigmoid. A cleaner version:
+
+```
+signedWinRate = (WinCount - LossCount) / Count    // [-1, +1]
+sampleStrength = 1 - 1 / (1 + Count / k)          // [0, 1), k ~ 10–20
+confidence = signedWinRate * sampleStrength
+```
+
+High confidence = pattern consistently predicts one side winning AND has enough samples. Feeds directly into `CalculateWeights` to down-weight noisy pattern classes.
+
+## Training-Time Improvements
+
+These require changes to `TrainSingle`, the game loop, or `CalculateWeights`. Larger scope than the scoring changes above.
 
 ### Temporal-Difference Learning (TD)
 
@@ -26,7 +112,7 @@ Treat the pattern weights as parameters, define a loss function (e.g., MSE betwe
 
 ### Logistic Regression on Win Probability
 
-Model the probability of winning as a logistic function of the evaluation, train via maximum likelihood. This is what strong Othello engines (Edax, Zebra) do. (The commented-out code in `CalculateScore()` around line 1144 hints at this direction.)
+Model the probability of winning as a logistic function of the evaluation, train via maximum likelihood. This is what strong Othello engines (Edax, Zebra) do.
 
 ### Decay / Recency Weighting
 
@@ -35,7 +121,3 @@ Weight recent games more heavily than old ones. The current system treats game #
 ### Stage-Specific Training
 
 Train separate eval functions for opening/midgame/endgame rather than one eval keyed by piece count. The transition between tactical and positional play is sharp in Othello.
-
-### Re-enable and Fix Confidence
-
-The disabled `Confidence` property was trying to weight patterns by how decisive they are (win/loss spread). Fixing and re-enabling it would improve weight quality significantly.
