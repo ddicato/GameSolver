@@ -663,8 +663,8 @@ namespace Othello {
         public class Entry {
             private readonly OthelloPlaybook playbook;
 
-            public readonly List<Entry> Parents = new List<Entry>(1);
-            public readonly List<Entry> Children = new List<Entry>(); // TODO: add a capacity?
+            public readonly HashSet<Entry> Parents = new HashSet<Entry>();
+            public readonly HashSet<Entry> Children = new HashSet<Entry>();
 
             // TODO: add ExactScore to store solved endgames
             public readonly OthelloNode State;
@@ -773,8 +773,7 @@ namespace Othello {
                 }
 #endif
 
-                if (!this.Parents.Any(parent.Equals)) {
-                    this.Parents.Add(parent);
+                if (this.Parents.Add(parent)) {
                     parent.InvalidateCachedScore();
                 }
             }
@@ -788,8 +787,7 @@ namespace Othello {
                 }
 #endif
 
-                if (!this.Children.Any(child.Equals)) {
-                    this.Children.Add(child);
+                if (this.Children.Add(child)) {
                     this.InvalidateCachedScore();
                 }
             }

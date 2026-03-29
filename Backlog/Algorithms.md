@@ -8,9 +8,9 @@ Reducing work per operation via better data structures, fewer lookups, and elimi
 
 Added `OthelloNode.Canonicalize()` which picks the lexicographic minimum of the 8 symmetries. The `entries` dictionary is now keyed by canonical form, reducing `TryGetEntry` and `Contains` from up to 8 dictionary lookups to 1. Each `Entry` caches its canonical state and uses it for `Equals` and `GetHashCode`, replacing the previous 8-symmetry iteration/XOR approach. Subsumes the earlier `Entry.GetHashCode` caching.
 
-### Use `HashSet<Entry>` for Parents and Children
+### ~~Use `HashSet<Entry>` for Parents and Children~~ *(done)*
 
-Both collections are `List<Entry>`. `AddParent` and `AddChild` use `.Any(entry.Equals)` for dedup — an O(n) linear scan. Switching to `HashSet<Entry>` makes dedup O(1). Parents is typically small (initialized with capacity 1), so Children is the bigger win here.
+Replaced `List<Entry>` with `HashSet<Entry>` for both collections. `AddParent` and `AddChild` now use `HashSet.Add()` which returns false on duplicate, replacing the O(n) `.Any(entry.Equals)` linear scan with O(1) hash lookup. Leverages the cached canonical hash and canonical `Equals` from the canonical board form change.
 
 ### ~~Skip `InvalidateCachedScore` during bulk deserialization~~ *(done)*
 
