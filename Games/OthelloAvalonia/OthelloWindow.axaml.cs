@@ -312,7 +312,7 @@ namespace OthelloAvalonia {
                 moves |= child.Occupied;
             }
 
-            return moves ^ board.Occupied;
+            return moves == 0ul ? 0ul : moves ^ board.Occupied;
         }
 
         private void ClearPieces() {
