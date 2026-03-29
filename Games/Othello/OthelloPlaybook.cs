@@ -751,6 +751,7 @@ namespace Othello {
             }
 
             private void InvalidateCachedScore() {
+                if (this.score == null) return;
                 this.score = null;
                 foreach (Entry entry in this.Parents) {
                     entry.InvalidateCachedScore();

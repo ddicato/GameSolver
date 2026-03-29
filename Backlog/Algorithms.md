@@ -16,9 +16,9 @@ Reducing work per operation via better data structures, fewer lookups, and elimi
 
 Both collections are `List<Entry>`. `AddParent` and `AddChild` use `.Any(entry.Equals)` for dedup — an O(n) linear scan. Switching to `HashSet<Entry>` makes dedup O(1). Parents is typically small (initialized with capacity 1), so Children is the bigger win here.
 
-### Skip `InvalidateCachedScore` during bulk deserialization
+### ~~Skip `InvalidateCachedScore` during bulk deserialization~~ *(done)*
 
-`InvalidateCachedScore()` recursively cascades up the entire parent chain, clearing cached scores. During deserialization linking (pass 3), scores are all null anyway — this work is wasted. A single dirty-flag set at the end of deserialization would suffice.
+Added early-return guard (`if (this.score == null) return;`) to `InvalidateCachedScore()`, which short-circuits the recursive cascade when scores are already null. Minimal measured impact on deserialization because the private `score` field is never populated during loading — the cascade was already hitting null nodes. The fix still helps the merge case (loading a second playbook into a non-empty one) and runtime callers (`AddGame`, `ExtendLeaf`) where cached scores do exist.
 
 ## CalculateHeuristics / TrainSingle
 
