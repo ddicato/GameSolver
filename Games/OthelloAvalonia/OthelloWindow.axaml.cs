@@ -398,5 +398,10 @@ namespace OthelloAvalonia {
             OthelloNode.PrintPlaybookStats();
             OthelloNode.WritePlaybook(PlaybookPath);
         }
+
+        private void CheckPlaybookButton_Click(object sender, RoutedEventArgs e) {
+            bool result = OthelloNode.Playbook.Check(verbose: true);
+            Console.WriteLine("Playbook integrity check: {0}", result ? "PASSED" : "FAILED");
+        }
     }
 }

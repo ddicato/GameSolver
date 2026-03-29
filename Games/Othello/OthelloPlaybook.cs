@@ -598,13 +598,38 @@ namespace Othello {
         /// <returns>True if the playbook is in a good state.</returns>
         private bool CheckCache(bool verbose) {
             var toCheck = new Queue<Entry>();
+            int checked_ = 0;
+            int failed = 0;
 
             toCheck.Enqueue(this.Root);
             while (toCheck.Count > 0) {
                 Entry entry = toCheck.Dequeue();
+                checked_++;
 
-                if (!entry.CheckCache()) {
-                    return false;
+                string reason = entry.CheckCacheVerbose();
+                if (reason != null) {
+                    failed++;
+                    if (verbose) {
+                        Console.WriteLine(
+                            "CheckCache FAIL: {0} pieces, solvedScore={1}, children={2}, pass={3}: {4}",
+                            entry.State.OccupiedSquareCount,
+                            entry.SolvedScore,
+                            entry.Children.Count,
+                            entry.State.Pass,
+                            reason);
+                        foreach (Entry child in entry.Children) {
+                            Console.WriteLine(
+                                "  child: {0} pieces, pass={1}, parents={2}, parentContainsSelf={3}",
+                                child.State.OccupiedSquareCount,
+                                child.State.Pass,
+                                child.Parents.Count,
+                                child.Parents.Contains(entry));
+                        }
+                    }
+                    if (failed >= 10) {
+                        Console.WriteLine("... suppressing further failures");
+                        return false;
+                    }
                 }
 
                 foreach (Entry child in entry.Children) {
@@ -612,7 +637,11 @@ namespace Othello {
                 }
             }
 
-            return true;
+            if (verbose) {
+                Console.WriteLine("CheckCache: {0} entries checked, {1} failed", checked_, failed);
+            }
+
+            return failed == 0;
         }
 
         /// <summary>
@@ -690,6 +719,7 @@ namespace Othello {
                     if (this.SolvedScore != null) {
                         Debug.Assert(this.SolvedScore >= -64 && this.SolvedScore <= 64);
 
+                        this.score = this.SolvedScore;
                         return this.SolvedScore.Value;
                     }
 
@@ -748,7 +778,7 @@ namespace Othello {
             }
 
             private void InvalidateCachedScore() {
-                if (this.score == null) return;
+                // if (this.score == null) return;
                 this.score = null;
                 foreach (Entry entry in this.Parents) {
                     entry.InvalidateCachedScore();
@@ -807,6 +837,32 @@ namespace Othello {
             #endregion
 
             #region Test Methods
+
+            internal string CheckCacheVerbose() {
+                if (this.score == null) {
+                    return null;
+                }
+
+                if (this.SolvedScore != null) {
+                    return this.score == this.SolvedScore ? null :
+                        string.Format("score={0} != solvedScore={1}", this.score, this.SolvedScore);
+                }
+
+                int max = -int.MaxValue;
+                foreach (Entry child in this.Children) {
+                    if (child.score == null) {
+                        return string.Format("score={0} but child has null score ({1} pieces)",
+                            this.score, child.State.OccupiedSquareCount);
+                    }
+
+                    if (child.score.Value > max) {
+                        max = child.score.Value;
+                    }
+                }
+
+                return this.score.Value == -max ? null :
+                    string.Format("score={0} but -max(children)={1}", this.score, -max);
+            }
 
             internal bool CheckCache() {
                 if (this.score == null) {

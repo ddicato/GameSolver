@@ -322,9 +322,15 @@
                 <Button x:Name="SavePlaybookButton"
                         Grid.Row="1"
                         Grid.Column="0"
-                        Grid.ColumnSpan="2"
                         Click="SavePlaybookButton_Click">
-                        Save Playbook
+                    Save Playbook
+                </Button>
+
+                <Button x:Name="CheckPlaybookButton"
+                        Grid.Row="1"
+                        Grid.Column="1"
+                        Click="CheckPlaybookButton_Click">
+                    Check Playbook
                 </Button>
             </Grid>
         </StackPanel>
