@@ -80,7 +80,7 @@ namespace Othello {
             for (int i = 1; i < history.Count; i++) {
                 Entry current;
                 if (!this.TryGetEntry(history[i].Node, out current)) {
-                    current = new Entry(this, history[i].Node, history[i].Score);
+                    current = new Entry(this, history[i].Node);
                     this.AddEntry(current);
                 }
 
@@ -703,7 +703,7 @@ namespace Othello {
             private readonly OthelloNode canonicalState;
             private readonly int cachedHashCode;
 
-            public Entry(OthelloPlaybook playbook, OthelloNode state, int? solvedScore = null) {
+            public Entry(OthelloPlaybook playbook, OthelloNode state) {
                 if (playbook == null || state == null) {
                     throw new ArgumentNullException();
                 }
