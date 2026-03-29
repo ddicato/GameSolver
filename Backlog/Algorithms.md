@@ -4,13 +4,9 @@ Reducing work per operation via better data structures, fewer lookups, and elimi
 
 ## Playbook Deserialization / Post-Processing
 
-### Store a canonical board form per entry
+### ~~Store a canonical board form per entry~~ *(done)*
 
-`TryGetEntry` currently iterates all 8 symmetries via `GetSymmetries()`, performing up to 8 dictionary lookups per call. Storing one canonical form per entry would reduce this to a single lookup. The canonical form could be the lexicographically smallest symmetry.
-
-### ~~Cache `Entry.GetHashCode`~~ *(done)*
-
-Hash is now computed once in the `Entry` constructor and stored in a `readonly` field. No measured improvement to deserialization — the `entries` dictionary is keyed by `OthelloNode` (not `Entry`), so `Entry.GetHashCode` isn't on the deserialization hot path. Benefits runtime paths that use `entriesByGameStage` (`HashSet<Entry>`) and heuristic calculations.
+Added `OthelloNode.Canonicalize()` which picks the lexicographic minimum of the 8 symmetries. The `entries` dictionary is now keyed by canonical form, reducing `TryGetEntry` and `Contains` from up to 8 dictionary lookups to 1. Each `Entry` caches its canonical state and uses it for `Equals` and `GetHashCode`, replacing the previous 8-symmetry iteration/XOR approach. Subsumes the earlier `Entry.GetHashCode` caching.
 
 ### Use `HashSet<Entry>` for Parents and Children
 

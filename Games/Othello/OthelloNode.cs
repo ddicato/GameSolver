@@ -490,6 +490,19 @@ namespace Othello {
             return result;
         }
 
+        public static OthelloNode Canonicalize(OthelloNode node) {
+            BoardSymmetries sym = GetBoardSymmetries(node.PlayerBoard, node.OtherBoard);
+            ulong minSelf = node.PlayerBoard, minOther = node.OtherBoard;
+            for (int s = 1; s < Transforms.Length; s++) {
+                sym.GetPair(s, out ulong self, out ulong other);
+                if (self < minSelf || (self == minSelf && other < minOther)) {
+                    minSelf = self;
+                    minOther = other;
+                }
+            }
+            return new OthelloNode(node.Turn, minSelf, minOther, node.Pass);
+        }
+
         public static IEnumerable<OthelloNode> GetSymmetries(OthelloNode node) {
             BoardSymmetries sym = GetBoardSymmetries(node.PlayerBoard, node.OtherBoard);
             for (int s = 0; s < Transforms.Length; s++) {

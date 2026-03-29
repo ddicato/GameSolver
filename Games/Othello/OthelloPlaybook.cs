@@ -35,7 +35,7 @@ namespace Othello {
         }
 
         private void AddEntry(Entry entry) {
-            this.entries[entry.State] = entry;
+            this.entries[OthelloNode.Canonicalize(entry.State)] = entry;
 
             int gameStage = entry.State.OccupiedSquareCount;
             HashSet<Entry> set;
@@ -104,18 +104,11 @@ namespace Othello {
         }
 
         public bool Contains(OthelloNode state) {
-            return OthelloNode.GetSymmetries(state).Any(this.entries.ContainsKey);
+            return this.entries.ContainsKey(OthelloNode.Canonicalize(state));
         }
 
         public bool TryGetEntry(OthelloNode state, out Entry value) {
-            foreach (OthelloNode key in OthelloNode.GetSymmetries(state)) {
-                if (this.entries.TryGetValue(key, out value)) {
-                    return true;
-                }
-            }
-
-            value = null;
-            return false;
+            return this.entries.TryGetValue(OthelloNode.Canonicalize(state), out value);
         }
 
         public void Clear() {
@@ -678,6 +671,7 @@ namespace Othello {
 
             // TODO: add DescendantCount and maybe AncestorCount
             private int? score = null;
+            private readonly OthelloNode canonicalState;
             private readonly int cachedHashCode;
 
             public Entry(OthelloPlaybook playbook, OthelloNode state, int? solvedScore = null) {
@@ -687,7 +681,8 @@ namespace Othello {
 
                 this.playbook = playbook;
                 this.State = state;
-                this.cachedHashCode = OthelloNode.GetSymmetries(this.State).Aggregate(0, (hash, s) => hash ^ s.GetHashCode());
+                this.canonicalState = OthelloNode.Canonicalize(state);
+                this.cachedHashCode = this.canonicalState.GetHashCode();
             }
 
             public int Score {
@@ -804,7 +799,7 @@ namespace Othello {
             public override bool Equals(object obj) {
                 Entry entry = obj as Entry;
 
-                return entry != null && OthelloNode.GetSymmetries(this.State).Any(entry.State.Equals);
+                return entry != null && this.canonicalState.Equals(entry.canonicalState);
             }
 
             public override int GetHashCode() {
