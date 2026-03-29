@@ -8,9 +8,9 @@ Reducing work per operation via better data structures, fewer lookups, and elimi
 
 `TryGetEntry` currently iterates all 8 symmetries via `GetSymmetries()`, performing up to 8 dictionary lookups per call. Storing one canonical form per entry would reduce this to a single lookup. The canonical form could be the lexicographically smallest symmetry.
 
-### Cache `Entry.GetHashCode`
+### ~~Cache `Entry.GetHashCode`~~ *(done)*
 
-`GetHashCode()` computes all 8 symmetries and XORs them together on every call — and it's invoked on every dictionary operation. Since the board state is immutable after creation, the hash can be computed once and stored.
+Hash is now computed once in the `Entry` constructor and stored in a `readonly` field. No measured improvement to deserialization — the `entries` dictionary is keyed by `OthelloNode` (not `Entry`), so `Entry.GetHashCode` isn't on the deserialization hot path. Benefits runtime paths that use `entriesByGameStage` (`HashSet<Entry>`) and heuristic calculations.
 
 ### Use `HashSet<Entry>` for Parents and Children
 

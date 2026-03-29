@@ -678,6 +678,7 @@ namespace Othello {
 
             // TODO: add DescendantCount and maybe AncestorCount
             private int? score = null;
+            private readonly int cachedHashCode;
 
             public Entry(OthelloPlaybook playbook, OthelloNode state, int? solvedScore = null) {
                 if (playbook == null || state == null) {
@@ -686,6 +687,7 @@ namespace Othello {
 
                 this.playbook = playbook;
                 this.State = state;
+                this.cachedHashCode = OthelloNode.GetSymmetries(this.State).Aggregate(0, (hash, s) => hash ^ s.GetHashCode());
             }
 
             public int Score {
@@ -806,7 +808,7 @@ namespace Othello {
             }
 
             public override int GetHashCode() {
-                return OthelloNode.GetSymmetries(this.State).Aggregate(0, (hash, state) => hash ^ state.GetHashCode());
+                return this.cachedHashCode;
             }
 
             #endregion
