@@ -297,7 +297,7 @@ namespace Othello {
             for (int i = 0; i < PatternClassScores.Length; i++) {
                 PatternClassScores[i] = new Dictionary<PatternClassKey, HeuristicData>();
             }
-            PatternClassWeights = new double[PatternClasses.Length, 65];
+            PatternClassWeights = new double[PatternClasses.Length, NumGameStages];
 
             // Store all the pattern masks and associated scores. Used for fast board evaluation.
             List<ulong> patterns = new List<ulong>();
@@ -375,8 +375,8 @@ namespace Othello {
         // TODO: Remove PatternClassWeights and encode weight via HeuristicData's score
         private static void InitializeWeights() {
             for (int i = 0; i < PatternClasses.Length; i++) {
-                for (int pieceCount = 0; pieceCount < 65; pieceCount++) {
-                    PatternClassWeights[i, pieceCount] = 1.0;
+                for (int stage = 0; stage < NumGameStages; stage++) {
+                    PatternClassWeights[i, stage] = 1.0;
                 }
             }
 
@@ -399,7 +399,7 @@ namespace Othello {
                 // Because our board evaluator adds one score for each pattern in the class, we must divide
                 // by the cardinality of the class in order to un-bias the weights.
                 foreach (var kvp in source) {
-                    double weight = PatternClassWeights[patternClass, kvp.Key.PieceCount] / PatternClasses[patternClass].Length;
+                    double weight = PatternClassWeights[patternClass, GameStage(kvp.Key.PieceCount)] / PatternClasses[patternClass].Length;
                     HeuristicData data = kvp.Value;
                     data.Score = (int)Math.Round(data.CalculateScore() * weight);
                     dest[new PatternClassKey(kvp.Key.PieceCount, transform(kvp.Key.Self), transform(kvp.Key.Other))] = data;
@@ -1125,6 +1125,11 @@ namespace Othello {
         public static readonly ulong[][] PatternClasses;
         private static readonly Dictionary<PatternClassKey, HeuristicData>[] PatternClassScores;
         private static readonly double[,] PatternClassWeights;
+        private const int GameStageShift = 2;
+        private const int NumGameStages = 64 >> GameStageShift;
+        public static int GameStage(int pieceCount) => (pieceCount - 1) >> GameStageShift;
+        public static int PieceCountMin(int stage) => (stage << GameStageShift) + 1;
+        public static int PieceCountMax(int stage) => Math.Min(64, (stage + 1) << GameStageShift);
 
         private static readonly ulong[] Patterns;
         private static readonly Dictionary<PatternClassKey, HeuristicData>[] PatternScores;
@@ -1227,14 +1232,14 @@ namespace Othello {
             }
 
             public int CalculateScore() {
-                const double k = 8.0; // Bayesian pseudocount — regularizes toward winProb=0.5 (logit=0)
+                const double pseudoCount = 8.0; // Bayesian prior — regularizes toward winProb=0.5 (logit=0)
 
-                double n = this.Count;
-                double draws = n - this.WinCount - this.LossCount;
-                double adjWins = this.WinCount + draws / 2.0;
-                double winProb = (adjWins + k / 2.0) / (n + k);
+                double sampleCount = this.Count;
+                double draws = sampleCount - this.WinCount - this.LossCount;
+                double adjustedWins = this.WinCount + draws / 2.0;
+                double winProb = (adjustedWins + pseudoCount / 2.0) / (sampleCount + pseudoCount);
 
-                // Clamp to avoid log(0); at 10000 samples the clamp never activates
+                // Cap extreme win probabilities to bound log-odds to approximately ±9.2
                 winProb = Math.Clamp(winProb, 0.0001, 0.9999);
 
                 // Log-odds: maps [0,1] to (-inf,+inf), with 0.5 -> 0.
@@ -1246,7 +1251,13 @@ namespace Othello {
             }
 
             public static double Sigmoid(double x) {
-                return x / (1.0 + Math.Abs(x));
+                return 1.0 / (1.0 + Math.Exp(-x));
+            }
+
+            public static double CrossEntropyLoss(double predictedWinProb, double label) {
+                const double epsilon = 1e-15; // to avoid log(0)
+                predictedWinProb = Math.Clamp(predictedWinProb, epsilon, 1.0 - epsilon);
+                return -(label * Math.Log(predictedWinProb) + (1.0 - label) * Math.Log(1.0 - predictedWinProb));
             }
 
             public double Confidence {
@@ -1330,9 +1341,9 @@ namespace Othello {
                 sym.GetPair(s, out ulong self, out ulong other);
                 for (int i = 0; i < PatternClasses.Length; i++) {
                     ulong mask = PatternClasses[i][0];
-                    HeuristicData data;
-                    if (PatternClassScores[i].TryGetValue(new PatternClassKey(pieceCount, self & mask, other & mask), out data)) {
-                        result += data.Score * PatternClassWeights[i, pieceCount] / Transforms.Length;
+                    HeuristicData patternData;
+                    if (PatternClassScores[i].TryGetValue(new PatternClassKey(pieceCount, self & mask, other & mask), out patternData)) {
+                        result += patternData.Score * PatternClassWeights[i, GameStage(pieceCount)] / Transforms.Length;
                     }
                 }
             }
@@ -1414,8 +1425,9 @@ namespace Othello {
         // TODO: interpolate between turns when averaging. For features, also interpolate between feature values
         // TODO: more and better learning algorithms: Gradient descent, Temporal-difference
 
-        // Score will be stored as an int, so we multiply to get more significant digits.
-        private const int ScoreMultiplier = 100; // TODO: serialize this so it is changeable
+        // Log-odds score (roughly in [-9.2,9.2]) will be stored as fixed-precision int, and as such, is multiplied by
+        // this factor to preserve additional significant digits.
+        private const int ScoreMultiplier = 10000; // TODO: serialize this so it is changeable
 
         public static OthelloPlaybook Playbook;
 
@@ -1468,12 +1480,12 @@ namespace Othello {
 
         public static void CalculateHeuristics() {
             DateTime start = DateTime.Now;
-            Console.Write("Calculating feature values... ");
-
             ClearHeuristics();
 
-            // Materialize playbook entries to avoid lazy Score evaluation during parallel iteration.
+            // Entry.Score values are already cached from ReadPlaybook, so ToList() is cheap.
             var entries = Playbook.ToList();
+
+            Console.Write("Calculating feature values ({0} entries)... ", entries.Count);
             int processed = 0;
 
             Parallel.ForEach(
@@ -1484,7 +1496,7 @@ namespace Othello {
                 // Body: accumulate into thread-local dictionaries.
                 (range, loopState, local) => {
                     for (int i = range.Item1; i < range.Item2; i++) {
-                        TrainSingle(entries[i].Key, entries[i].Value * ScoreMultiplier,
+                        TrainSingle(entries[i].Key, entries[i].Value,
                             local.PatternClassScores, local.FeatureScores);
                     }
 
@@ -1506,6 +1518,8 @@ namespace Othello {
 
             TimeSpan elapsed = DateTime.Now - start;
             Console.WriteLine("done. Time elapsed = {0:0.000} seconds.", elapsed.TotalSeconds);
+
+            CalculateWeights();
         }
 
         private class TrainAccumulator {
@@ -1589,52 +1603,219 @@ namespace Othello {
         }
 
         public static void CalculateWeights(bool verbose = true) {
+            var entries = Playbook?.ToList();
+
             DateTime start = DateTime.Now;
             if (verbose) {
-                Console.Write("Calculating feature weights...");
+                Console.WriteLine("Calculating feature weights...");
             }
 
-            for (int i = 0; i < PatternClasses.Length; i++) {
-                double possibilities = Math.Pow(3.0, BitCount(PatternClasses[i][0])) + 1.0;
+            int numClasses = PatternClasses.Length;
 
-                // Zero all the weights
-                for (int pieceCount = 0; pieceCount < 65; pieceCount++) {
-                    PatternClassWeights[i, pieceCount] = 0.0;
-                }
-
-                // Average the confidence values to determine each initial weight
-                foreach (var kvp in PatternClassScores[i]) {
-                    PatternClassWeights[i, kvp.Key.PieceCount] += kvp.Value.Confidence;
-                }
-
-                // Multiply by another confidence measure based on our coverage of the pattern valuation space
-                for (int pieceCount = 0; pieceCount < 65; pieceCount++) {
-                    double temp = PatternClassWeights[i, pieceCount];
-                    temp *= 100.0 / possibilities;
-                    PatternClassWeights[i, pieceCount] = HeuristicData.Sigmoid(temp);
-                }
-            }
-
-            // Normalize the weights for a total magnitude of 1
-            for (int pieceCount = 0; pieceCount < 65; pieceCount++) {
-                double weightSum = 0.0;
-                for (int i = 0; i < PatternClasses.Length; i++) {
-                    weightSum += Math.Abs(PatternClassWeights[i, pieceCount]);
-                }
-
-                if (weightSum > 0.0) {
-                    weightSum = 1.0 / weightSum;
-                    for (int i = 0; i < PatternClasses.Length; i++) {
-                        PatternClassWeights[i, pieceCount] *= weightSum;
+            // The logistic regression requires playbook data to learn weights.
+            // Fall back to uniform weights when the playbook is not loaded.
+            if (entries == null || entries.Count == 0) {
+                for (int i = 0; i < numClasses; i++) {
+                    for (int stage = 0; stage < NumGameStages; stage++) {
+                        PatternClassWeights[i, stage] = 1.0 / numClasses;
                     }
                 }
+
+                CalculatePatternScores();
+
+                if (verbose) {
+                    Console.WriteLine("done (no playbook, uniform weights). Time elapsed = {0:0.000} seconds.",
+                        (DateTime.Now - start).TotalSeconds);
+                }
+                return;
             }
+
+            // Step 1: Extract feature vectors and labels from the playbook, grouped by bucket.
+            // Entry.Score is cached after CalculateHeuristics, so ToList() is cheap here.
+            // Features are the per-pattern-class log-odds values (averaged over symmetries).
+            // Labels are 1.0 (win), 0.0 (loss), or 0.5 (draw).
+            Console.WriteLine("Extracting feature vectors and labels from playbook entries ({0} entries)...", entries.Count);
+            var trainingData = new List<(double[] features, double label)>[NumGameStages];
+            var validationData = new List<(double[] features, double label)>[NumGameStages];
+            for (int stage = 0; stage < NumGameStages; stage++) {
+                trainingData[stage] = [];
+                validationData[stage] = [];
+            }
+            foreach (var entry in entries) {
+                OthelloNode node = entry.Key;
+                int score = entry.Value;
+                int pieceCount = node.OccupiedSquareCount;
+                int stage = GameStage(pieceCount);
+
+                double label;
+                // TODO: should these be close to 0/1 instead of exactly 0/1? To prevent saturating sigmoid?
+                if (score > 0) label = 1.0;
+                else if (score < 0) label = 0.0;
+                else label = 0.5;
+
+                double[] features = new double[numClasses];
+                BoardSymmetries sym = GetBoardSymmetries(node.PlayerBoard, node.OtherBoard);
+
+                for (int i = 0; i < numClasses; i++) {
+                    ulong mask = PatternClasses[i][0];
+                    double featureSum = 0.0;
+                    int featureCount = 0;
+
+                    for (int s = 0; s < Transforms.Length; s++) {
+                        sym.GetPair(s, out ulong self, out ulong other);
+                        if (PatternClassScores[i].TryGetValue(
+                                new PatternClassKey(pieceCount, self & mask, other & mask), out HeuristicData data))
+                        {
+                            featureSum += data.Score / (double)ScoreMultiplier;
+                            featureCount++;
+                        }
+                    }
+
+                    features[i] = featureCount > 0 ? featureSum / featureCount : 0.0;
+                }
+
+                // train/validation split
+                if (Random.Shared.NextDouble() < 0.2) {
+                    validationData[stage].Add((features, label));
+                } else {
+                    trainingData[stage].Add((features, label));
+                }
+            }
+
+            // Step 2: Learn weights via logistic regression per game stage.
+            const double learningRate = 0.01;
+            const double lambda = 1e-3; // L2 regularization
+            const int maxIterations = 500;
+            const int minExamples = 20;
+
+            bool[] stageTrained = new bool[NumGameStages];
+
+            for (int stage = 0; stage < NumGameStages; stage++) {
+                var trainingDataStage = trainingData[stage];
+                var validationDataStage = validationData[stage];
+
+                if (trainingDataStage.Count < minExamples) {
+                    if (verbose) {
+                        Console.WriteLine("  Stage {0} (pieces {1}-{2}): only {3} training + {4} validation examples, skipping weight learning.",
+                            stage, PieceCountMin(stage), PieceCountMax(stage), trainingDataStage.Count, validationDataStage.Count);
+                    }
+                    for (int i = 0; i < numClasses; i++) {
+                        PatternClassWeights[i, stage] = 1.0;
+                    }
+                    continue;
+                }
+
+                double[] weights = new double[numClasses];
+
+                if (verbose) {
+                    Console.WriteLine("\n  Stage {0} (pieces {1}-{2}, {3} training + {4} validation examples):",
+                        stage, PieceCountMin(stage), PieceCountMax(stage), trainingDataStage.Count, validationDataStage.Count);
+                }
+
+                for (int iter = 0; iter < maxIterations; iter++) {
+                    double[] gradient = new double[numClasses];
+                    double trainingLoss = 0.0;
+
+                    foreach (var (features, label) in trainingDataStage) {
+                        double logit = 0.0;
+                        for (int i = 0; i < numClasses; i++) {
+                            logit += weights[i] * features[i];
+                        }
+
+                        double predictedWinProb = HeuristicData.Sigmoid(logit);
+                        trainingLoss += HeuristicData.CrossEntropyLoss(predictedWinProb, label);
+
+                        double error = predictedWinProb - label;
+                        for (int i = 0; i < numClasses; i++) {
+                            gradient[i] += error * features[i];
+                        }
+                    }
+                    trainingLoss /= trainingDataStage.Count;
+
+                    double validationLoss = 0.0;
+                    foreach (var (features, label) in validationDataStage) {
+                        double logit = 0.0;
+                        for (int i = 0; i < numClasses; i++) {
+                            logit += weights[i] * features[i];
+                        }
+
+                        double predictedWinProb = HeuristicData.Sigmoid(logit);
+                        validationLoss += HeuristicData.CrossEntropyLoss(predictedWinProb, label);
+                    }
+                    if (validationDataStage.Count > 0) {
+                        validationLoss /= validationDataStage.Count;
+                    } else {
+                        validationLoss = double.NaN;
+                    }
+
+                    // L2 regularization contribution to average loss
+                    double l2Penalty = 0.0;
+                    for (int i = 0; i < numClasses; i++) {
+                        l2Penalty += 0.5 * lambda * weights[i] * weights[i];
+                    }
+                    trainingLoss += l2Penalty;
+                    validationLoss += l2Penalty;
+
+                    if (verbose && (iter == 0 || iter == maxIterations - 1 || (iter + 1) % 50 == 0)) {
+                        Console.WriteLine(
+                            "    iter {0,3}: train loss = {1:0.000000} validation loss = {2:0.000000}",
+                            iter, trainingLoss, validationLoss);
+                    }
+
+                    for (int i = 0; i < numClasses; i++) {
+                        gradient[i] /= trainingDataStage.Count;
+                        gradient[i] += lambda * weights[i];
+                        weights[i] -= learningRate * gradient[i];
+                    }
+                }
+
+                for (int i = 0; i < numClasses; i++) {
+                    PatternClassWeights[i, stage] = weights[i];
+                }
+                stageTrained[stage] = true;
+            }
+
+            InterpolateUntrainedStages(stageTrained);
 
             // Recalculate the pattern scores to incorporate the new weights.
             CalculatePatternScores();
 
             TimeSpan elapsed = DateTime.Now - start;
-            Console.WriteLine("done. Time elapsed = {0:0.000} seconds.", elapsed.TotalSeconds);
+            if (verbose) {
+                Console.WriteLine("done ({0} examples, {1} stages trained). Time elapsed = {2:0.000} seconds.",
+                    entries.Count,
+                    stageTrained.Count(t => t),
+                    elapsed.TotalSeconds);
+            }
+        }
+
+        /// <summary>
+        /// For untrained game stages, interpolate weights from the nearest trained neighbors.
+        /// Stages beyond all trained stages are copied from the nearest trained stage.
+        /// </summary>
+        private static void InterpolateUntrainedStages(bool[] stageTrained) {
+            int numClasses = PatternClasses.Length;
+
+            for (int stage = 0; stage < NumGameStages; stage++) {
+                if (stageTrained[stage]) continue;
+
+                int lowerStage = stage - 1, upperStage = stage + 1;
+                while (lowerStage >= 0 && !stageTrained[lowerStage]) lowerStage--;
+                while (upperStage < NumGameStages && !stageTrained[upperStage]) upperStage++;
+
+                for (int i = 0; i < numClasses; i++) {
+                    if (lowerStage >= 0 && upperStage < NumGameStages) {
+                        // t = interpolation factor: 0.0 at lowerStage, 1.0 at upperStage
+                        double t = (double)(stage - lowerStage) / (upperStage - lowerStage);
+                        PatternClassWeights[i, stage] =
+                            double.Lerp(PatternClassWeights[i, lowerStage], PatternClassWeights[i, upperStage], t);
+                    } else if (lowerStage >= 0) {
+                        PatternClassWeights[i, stage] = PatternClassWeights[i, lowerStage];
+                    } else if (upperStage < NumGameStages) {
+                        PatternClassWeights[i, stage] = PatternClassWeights[i, upperStage];
+                    }
+                }
+            }
         }
 
         #endregion
@@ -1933,8 +2114,16 @@ namespace Othello {
                 reader.Close();
             }
 
-            // TODO: populate PatternScores based on PatternClassScores, or remove PatternScores
-            CalculateWeights(verbose: false);
+            // Use uniform weights when loading from disk. The logistic regression in
+            // CalculateWeights requires PatternClassScores to be populated by CalculateHeuristics
+            // first; at load time we only have the deserialized data.
+            for (int i = 0; i < PatternClasses.Length; i++) {
+                for (int stage = 0; stage < NumGameStages; stage++) {
+                    PatternClassWeights[i, stage] = 1.0 / PatternClasses.Length;
+                }
+            }
+
+            CalculatePatternScores();
 
             TimeSpan elapsed = DateTime.Now - start;
             Console.WriteLine("done. maxCount = {0:n0}. Time elapsed = {1:0.000} seconds.", HeuristicDataMaxCount, elapsed.TotalSeconds);
@@ -1946,6 +2135,10 @@ namespace Othello {
 
         public static void ReadPlaybook(string path) {
             Playbook.Deserialize(path);
+
+            // Materialize Entry.Score values so subsequent calls to Playbook.ToList()
+            // (e.g., in CalculateWeights) don't trigger expensive negamax evaluation.
+            Playbook.ToList();
         }
 
         public static void WritePlaybook(string path) {
@@ -2153,8 +2346,8 @@ namespace Othello {
                 Console.WriteLine("Pattern {0}:", i);
                 Console.WriteLine(PrintUlong(PatternClasses[i][0]));
 
-                for (int pieceCount = 0; pieceCount < 65; pieceCount++) {
-                    Console.WriteLine("{0:00} \t{1:00.000}", pieceCount, PatternClassWeights[i, pieceCount]);
+                for (int stage = 0; stage < NumGameStages; stage++) {
+                    Console.WriteLine("{0:00} \t{1:00.000}", stage, PatternClassWeights[i, stage]);
                 }
 
                 Console.WriteLine();

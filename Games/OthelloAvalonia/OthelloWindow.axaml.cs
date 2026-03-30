@@ -387,7 +387,6 @@ namespace OthelloAvalonia {
 
         private void RefreshParamsButton_Click(object sender, RoutedEventArgs e) {
             OthelloNode.CalculateHeuristics();
-            OthelloNode.CalculateWeights();
         }
 
         private void SaveParamsButton_Click(object sender, RoutedEventArgs e) {

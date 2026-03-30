@@ -109,7 +109,6 @@ namespace Othello {
                     }
                     if (processed % (batchSize * 10) == 0) {
                         OthelloNode.CalculateHeuristics();
-                        OthelloNode.CalculateWeights();
                         OthelloNode.WriteHeuristics(ParamsPath);
                     }
                 }
@@ -122,7 +121,6 @@ namespace Othello {
                 OthelloNode.PrintPlaybookStats();
                 OthelloNode.WritePlaybook(PlaybookPath);
                 OthelloNode.CalculateHeuristics();
-                OthelloNode.CalculateWeights();
                 OthelloNode.WriteHeuristics(ParamsPath);
             }
         }
@@ -380,7 +378,6 @@ namespace Othello {
 
             if (training != TrainingMode.None && games > 0) {
                 OthelloNode.CalculateHeuristics();
-                OthelloNode.CalculateWeights();
                 OthelloNode.WritePlaybook(PlaybookPath);
                 OthelloNode.WriteHeuristics(ParamsPath);
                 OthelloNode.PrintPlaybookStats();
