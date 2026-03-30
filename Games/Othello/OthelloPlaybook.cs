@@ -130,6 +130,23 @@ namespace Othello {
         }
 
         /// <summary>
+        /// Clears SolvedScore on non-leaf entries (those with children) so that
+        /// BackfillSolvedScores can recompute them. Leaf SolvedScores (from endgame
+        /// search or game-over) are preserved. Returns the number of entries cleared.
+        /// </summary>
+        public int ClearBackfilledSolvedScores() {
+            int cleared = 0;
+            foreach (Entry entry in this.entries.Values) {
+                if (entry.Children.Count > 0 && entry.SolvedScore != null) {
+                    entry.SolvedScore = null;
+                    entry.ClearCachedScore();
+                    cleared++;
+                }
+            }
+            return cleared;
+        }
+
+        /// <summary>
         /// Backfills SolvedScore on internal nodes whose children all have SolvedScores.
         /// Processes bottom-up by game stage (most pieces first) so that children are
         /// resolved before parents. Returns the number of entries backfilled.
@@ -158,7 +175,7 @@ namespace Othello {
 
                     // All children must have SolvedScores for us to compute this one.
                     if (entry.Children.All(c => c.SolvedScore != null)) {
-                        entry.SolvedScore = -entry.Children.Max(c => c.SolvedScore.Value);
+                        entry.SolvedScore = -entry.Children.Min(c => c.SolvedScore.Value);
                         backfilled++;
                     }
                 }
@@ -727,6 +744,10 @@ namespace Othello {
                 this.cachedHashCode = this.canonicalState.GetHashCode();
             }
 
+            internal void ClearCachedScore() {
+                this.score = null;
+            }
+
             public int Score {
                 get {
                     if (this.SolvedScore != null) {
@@ -756,7 +777,7 @@ namespace Othello {
                         } else {
                             // The best way to estimate the score of this board is to do a negamax search
                             // within the space of recorded game states.
-                            this.score = -this.Children.Max(entry => entry.Score);
+                            this.score = -this.Children.Min(entry => entry.Score);
                         }
                     }
 
@@ -772,7 +793,7 @@ namespace Othello {
                 }
 
                 internal set {
-                    Debug.Assert(value >= -64 && value <= 64);
+                    Debug.Assert(value == null || value >= -64 && value <= 64);
                     this.solvedScore = value;
                 }
             }
@@ -861,20 +882,20 @@ namespace Othello {
                         string.Format("score={0} != solvedScore={1}", this.score, this.SolvedScore);
                 }
 
-                int max = -int.MaxValue;
+                int min = int.MaxValue;
                 foreach (Entry child in this.Children) {
                     if (child.score == null) {
                         return string.Format("score={0} but child has null score ({1} pieces)",
                             this.score, child.State.OccupiedSquareCount);
                     }
 
-                    if (child.score.Value > max) {
-                        max = child.score.Value;
+                    if (child.score.Value < min) {
+                        min = child.score.Value;
                     }
                 }
 
-                return this.score.Value == -max ? null :
-                    string.Format("score={0} but -max(children)={1}", this.score, -max);
+                return this.score.Value == -min ? null :
+                    string.Format("score={0} but -min(children)={1}", this.score, -min);
             }
 
             internal bool CheckCache() {
@@ -886,18 +907,18 @@ namespace Othello {
                     return this.score == this.SolvedScore;
                 }
 
-                int max = -int.MaxValue;
+                int min = int.MaxValue;
                 foreach (Entry child in this.Children) {
                     if (child.score == null) {
                         return false;
                     }
 
-                    if (child.score.Value > max) {
-                        max = child.score.Value;
+                    if (child.score.Value < min) {
+                        min = child.score.Value;
                     }
                 }
 
-                return this.score.Value == -max;
+                return this.score.Value == -min;
             }
 
             #endregion

@@ -13,6 +13,30 @@ namespace Othello {
         const string ParamsPath = "params.txt";
         const string PlaybookPath = "playbook.txt";
 
+        /// <summary>
+        /// Repairs playbook SolvedScores that were computed with the wrong negamax
+        /// formula (-max instead of -min). Clears backfilled (non-leaf) SolvedScores,
+        /// recomputes them with the corrected formula, and re-saves.
+        /// </summary>
+        static void RepairSolvedScoresMain(string[] args) {
+            OthelloNode.ReadPlaybook(PlaybookPath);
+            OthelloNode.PrintPlaybookStats();
+
+            int cleared = OthelloNode.Playbook.ClearBackfilledSolvedScores();
+            Console.WriteLine("Cleared {0} backfilled SolvedScore(s).", cleared);
+
+            OthelloNode.PrintPlaybookStats();
+
+            int backfilled = OthelloNode.Playbook.BackfillSolvedScores();
+            Console.WriteLine("Re-backfilled {0} SolvedScore(s) with corrected formula.", backfilled);
+
+            OthelloNode.PrintPlaybookStats();
+            OthelloNode.WritePlaybook(PlaybookPath);
+
+            Console.WriteLine("Done. Press Enter to exit.");
+            Console.ReadLine();
+        }
+
         static void TestMain(string[] args) {
             RunTests();
 
