@@ -98,6 +98,10 @@ confidence = signedWinRate * sampleStrength
 
 High confidence = pattern consistently predicts one side winning AND has enough samples. Feeds directly into `CalculateWeights` to down-weight noisy pattern classes.
 
+### Serialize PatternClassWeights
+
+`ReadHeuristics` loads `FeatureCoefficients` and `PatternClassScores` but resets `PatternClassWeights` to uniform (`1.0 / numClasses`). The feature coefficients were trained jointly with specific pattern weights in `CalculateWeights`, so after a load-only path (no `CalculateHeuristics`), `PatternScoreSlow` uses mismatched weights. Serializing `PatternClassWeights` alongside `FeatureCoefficients` would make the params file self-contained, removing the need to rerun logistic regression after loading.
+
 ## Training-Time Improvements
 
 These require changes to `TrainSingle`, the game loop, or `CalculateWeights`. Larger scope than the scoring changes above.
@@ -121,3 +125,37 @@ Weight recent games more heavily than old ones. The current system treats game #
 ### Stage-Specific Training
 
 Train separate eval functions for opening/midgame/endgame rather than one eval keyed by piece count. The transition between tactical and positional play is sharp in Othello.
+
+## Numeric Features Treated as Categorical
+
+The `Features` array in `OthelloNode.cs` contains five numeric features alongside the pattern-based features:
+
+- `PieceCountSpread` (range ~[-64, +64])
+- `CornerSpread` (range [-4, +4])
+- `StablePieceSpread` (variable range)
+- `FrontierSpread` (variable range)
+- `PotentialMobilitySpread` (variable range)
+
+These are all continuous numeric quantities, but the current system treats them identically to pattern features: each distinct integer output is mapped via `FeatureKey(pieceCount, value)` to an independent `HeuristicData` bucket in the dictionary. This means:
+
+- A `CornerSpread` of +3 has no relationship to +2 or +4 — each is a completely independent category.
+- High-range features like `PieceCountSpread` create sparse buckets (up to 129 distinct values × ~60 piece counts = ~7,700 buckets), many with few samples.
+- The logistic regression learns independent log-odds per bucket, ignoring the natural ordering and monotonicity of these features.
+
+### Proposed Approach: Direct Numeric Features in Logistic Regression
+
+Instead of looking up pre-bucketed log-odds for these features, include them as direct numeric inputs to the logistic regression alongside the pattern-based log-odds:
+
+```
+logit = Σ (pattern log-odds × pattern weight) + Σ (β_i × feature_i)
+```
+
+where `β_i` are learned coefficients (one per numeric feature per game stage), and `feature_i` is the raw numeric value (e.g., `CornerSpread = +3`).
+
+**Implementation steps:**
+
+1. **Separate numeric features from pattern features** in `PatternScoreSlow`. Pattern features continue through the existing `HeuristicData` lookup → log-odds → weighted sum path. Numeric features are evaluated directly.
+2. **Learn coefficients per stage** in `CalculateWeights` (or a new training step). For each piece-count stage, fit `β_i` via logistic regression on the playbook data, using the numeric feature values as inputs alongside the pattern log-odds sum.
+3. **Add the numeric term** to `PatternScoreSlow`: after the pattern loop, add `Σ β_i × feature_i` to the accumulated log-odds sum.
+
+This eliminates thousands of sparse dictionary entries, gives the model monotonicity for free (a positive `β` for `CornerSpread` means more corners is always better, proportionally), and reduces overfitting on rare feature values. The pattern features remain categorical since board patterns genuinely are categorical — there's no meaningful interpolation between two different edge configurations.

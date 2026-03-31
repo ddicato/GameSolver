@@ -862,9 +862,6 @@ namespace Othello {
                 board => (int)Math.Round(board.PatternScoreSlow() * 100.0 / board.PatternScore()),
                 stateHistory);
 
-            Console.WriteLine("Feature scores:");
-            PrintScoreHistory(groupSize, board => board.FeatureScore(), stateHistory);
-
             Console.WriteLine("Eval1 scores:");
             PrintScoreHistory(groupSize, OthelloNode.Eval1, stateHistory);
         }

@@ -341,11 +341,7 @@ namespace Othello {
                 "Potential Mobility"
             };
 
-            // TODO: add interpolation to training function
-            FeatureScores = new Dictionary<FeatureKey, HeuristicData>[Features.Length];
-            for (int i = 0; i < Features.Length; i++) {
-                FeatureScores[i] = new Dictionary<FeatureKey, HeuristicData>();
-            }
+            FeatureCoefficients = new double[Features.Length, NumGameStages];
 
             // Initialize all the pattern and feature weights to 1, calculating Patterns and PatternScores accordingly.
             InitializeWeights();
@@ -377,6 +373,12 @@ namespace Othello {
             for (int i = 0; i < PatternClasses.Length; i++) {
                 for (int stage = 0; stage < NumGameStages; stage++) {
                     PatternClassWeights[i, stage] = 1.0;
+                }
+            }
+
+            for (int i = 0; i < Features.Length; i++) {
+                for (int stage = 0; stage < NumGameStages; stage++) {
+                    FeatureCoefficients[i, stage] = 0.0;
                 }
             }
 
@@ -1141,21 +1143,8 @@ namespace Othello {
         // Additional features
         public static readonly Func<OthelloNode, int>[] Features;
         public static readonly string[] FeatureNames;
-        private static readonly Dictionary<FeatureKey, HeuristicData>[] FeatureScores;
-        // TODO: add feature weights
-        // TODO: abstract pattern-eval score as a feature? unify with pattern eval features?
-
-        private readonly struct FeatureKey(int pieceCount, int value) : IEquatable<FeatureKey> {
-            public readonly int PieceCount = pieceCount;
-            public readonly int Value = value;
-
-            public bool Equals(FeatureKey other) =>
-                PieceCount == other.PieceCount && Value == other.Value;
-
-            public override bool Equals(object obj) => obj is FeatureKey k && Equals(k);
-
-            public override int GetHashCode() => HashCode.Combine(PieceCount, Value);
-        }
+        // Learned coefficients for numeric features: β[featureIndex, gameStage]
+        private static double[,] FeatureCoefficients;
 
         private readonly struct PatternClassKey(int pieceCount, ulong self, ulong other) : IEquatable<PatternClassKey> {
             public readonly int PieceCount = pieceCount;
@@ -1280,38 +1269,6 @@ namespace Othello {
             }
         }
 
-        //\\//
-        /*public int HeuristicScore() {
-            ulong self = this.PlayerBoard;
-            ulong other = this.OtherBoard;
-            int pieceCount = this.PieceCount;
-            int result = 0;
-
-            for (int i = 0; i < PatternSets.Length; i++) {
-                foreach (ulong mask in PatternSets[i]) {
-                    Dictionary<ulong, Dictionary<ulong, HeuristicData>> mid;
-                    Dictionary<ulong, HeuristicData> inner;
-                    HeuristicData data;
-                    if (PatternScores[i].TryGetValue(pieceCount, out mid) &&
-                        mid.TryGetValue(self & mask, out inner) &&
-                        inner.TryGetValue(other & mask, out data)) {
-                        result += data.Score;
-                    }
-                }
-            }
-
-            for (int i = 0; i < Features.Length; i++) {
-                Dictionary<int, HeuristicData> inner;
-                HeuristicData data;
-                if (FeatureScores[i].TryGetValue(pieceCount, out inner) &&
-                    inner.TryGetValue(Features[i](this), out data)) {
-                    result += data.Score;
-                }
-            }
-
-            return result;
-        }*/
-
         public int PatternScore() {
             ulong self = this.PlayerBoard;
             ulong other = this.OtherBoard;
@@ -1334,6 +1291,7 @@ namespace Othello {
         // a costly call to CalculateWeights() and CalculatePatternScores()
         public int PatternScoreSlow() {
             int pieceCount = this.OccupiedSquareCount;
+            int stage = GameStage(pieceCount);
             double result = 0.0;
 
             BoardSymmetries sym = GetBoardSymmetries(this.PlayerBoard, this.OtherBoard);
@@ -1343,49 +1301,18 @@ namespace Othello {
                     ulong mask = PatternClasses[i][0];
                     HeuristicData patternData;
                     if (PatternClassScores[i].TryGetValue(new PatternClassKey(pieceCount, self & mask, other & mask), out patternData)) {
-                        result += patternData.Score * PatternClassWeights[i, GameStage(pieceCount)] / Transforms.Length;
+                        result += patternData.Score * PatternClassWeights[i, stage] / Transforms.Length;
                     }
                 }
+            }
+
+            // Add numeric feature contributions: Σ β_i × feature_i
+            for (int i = 0; i < Features.Length; i++) {
+                result += Features[i](this) * FeatureCoefficients[i, stage];
             }
 
             return (int)Math.Round(result);
         }
-
-        public int FeatureScore() {
-            int pieceCount = this.OccupiedSquareCount;
-            int result = 0;
-
-            for (int i = 0; i < Features.Length; i++) {
-                HeuristicData data;
-                if (FeatureScores[i].TryGetValue(new FeatureKey(pieceCount, Features[i](this)), out data)) {
-                    result += data.Score;
-                }
-            }
-
-            return result;
-        }
-
-        //\\//
-        /*public int UnknownPatterns() {
-            ulong self = this.PlayerBoard;
-            ulong other = this.OtherBoard;
-            int pieceCount = this.PieceCount;
-            int result = 0;
-
-            for (int i = 0; i < PatternSets.Length; i++) {
-                foreach (ulong mask in PatternSets[i]) {
-                    Dictionary<ulong, Dictionary<ulong, HeuristicData>> mid;
-                    Dictionary<ulong, HeuristicData> inner;
-                    if (!PatternScores[i].TryGetValue(pieceCount, out mid) ||
-                        !mid.TryGetValue(self & mask, out inner) ||
-                        !inner.ContainsKey(other & mask)) {
-                        result++;
-                    }
-                }
-            }
-
-            return result;
-        }*/
 
         public int UnknownPatterns() {
             int pieceCount = this.OccupiedSquareCount;
@@ -1405,24 +1332,10 @@ namespace Othello {
             return result;
         }
 
-        public int UnknownFeatures() {
-            int pieceCount = this.OccupiedSquareCount;
-            int result = 0;
-
-            for (int i = 0; i < Features.Length; i++) {
-                if (!FeatureScores[i].ContainsKey(new FeatureKey(pieceCount, Features[i](this)))) {
-                    result++;
-                }
-            }
-
-            return result;
-        }
-
         #endregion
 
         #region Learning
 
-        // TODO: interpolate between turns when averaging. For features, also interpolate between feature values
         // TODO: more and better learning algorithms: Gradient descent, Temporal-difference
 
         // Log-odds score (roughly in [-9.2,9.2]) will be stored as fixed-precision int, and as such, is multiplied by
@@ -1467,9 +1380,6 @@ namespace Othello {
 
         // TODO: rename *Heuristics to *Params
         public static void ClearHeuristics() {
-            foreach (Dictionary<FeatureKey, HeuristicData> dict in FeatureScores) {
-                dict.Clear();
-            }
             foreach (Dictionary<PatternClassKey, HeuristicData> dict in PatternClassScores) {
                 dict.Clear();
             }
@@ -1497,7 +1407,7 @@ namespace Othello {
                 (range, loopState, local) => {
                     for (int i = range.Item1; i < range.Item2; i++) {
                         TrainSingle(entries[i].Key, entries[i].Value,
-                            local.PatternClassScores, local.FeatureScores);
+                            local.PatternClassScores);
                     }
 
                     int done = Interlocked.Add(ref processed, range.Item2 - range.Item1);
@@ -1511,7 +1421,6 @@ namespace Othello {
                 (local) => {
                     lock (PatternClassScores) {
                         MergePatternClassScores(local.PatternClassScores);
-                        MergeFeatureScores(local.FeatureScores);
                     }
                 }
             );
@@ -1524,17 +1433,11 @@ namespace Othello {
 
         private class TrainAccumulator {
             public readonly Dictionary<PatternClassKey, HeuristicData>[] PatternClassScores;
-            public readonly Dictionary<FeatureKey, HeuristicData>[] FeatureScores;
 
             public TrainAccumulator() {
                 this.PatternClassScores = new Dictionary<PatternClassKey, HeuristicData>[PatternClasses.Length];
                 for (int i = 0; i < this.PatternClassScores.Length; i++) {
                     this.PatternClassScores[i] = new Dictionary<PatternClassKey, HeuristicData>();
-                }
-
-                this.FeatureScores = new Dictionary<FeatureKey, HeuristicData>[Features.Length];
-                for (int i = 0; i < this.FeatureScores.Length; i++) {
-                    this.FeatureScores[i] = new Dictionary<FeatureKey, HeuristicData>();
                 }
             }
         }
@@ -1553,25 +1456,10 @@ namespace Othello {
             }
         }
 
-        private static void MergeFeatureScores(
-            Dictionary<FeatureKey, HeuristicData>[] source) {
-            for (int i = 0; i < Features.Length; i++) {
-                foreach (var kvp in source[i]) {
-                    HeuristicData existing;
-                    if (FeatureScores[i].TryGetValue(kvp.Key, out existing)) {
-                        FeatureScores[i][kvp.Key] = new HeuristicData(existing, kvp.Value);
-                    } else {
-                        FeatureScores[i][kvp.Key] = kvp.Value;
-                    }
-                }
-            }
-        }
-
         // TODO: rename this too
         private static void TrainSingle(
             OthelloNode node, int finalScore,
-            Dictionary<PatternClassKey, HeuristicData>[] patternScores,
-            Dictionary<FeatureKey, HeuristicData>[] featureScores) {
+            Dictionary<PatternClassKey, HeuristicData>[] patternScores) {
             int pieceCount = node.OccupiedSquareCount;
 
             BoardSymmetries sym = GetBoardSymmetries(node.PlayerBoard, node.OtherBoard);
@@ -1589,17 +1477,6 @@ namespace Othello {
                     }
                 }
             }
-
-            for (int i = 0; i < Features.Length; i++) {
-                var key = new FeatureKey(pieceCount, Features[i](node));
-
-                HeuristicData data;
-                if (featureScores[i].TryGetValue(key, out data)) {
-                    featureScores[i][key] = new HeuristicData(data, finalScore);
-                } else {
-                    featureScores[i][key] = new HeuristicData(finalScore);
-                }
-            }
         }
 
         public static void CalculateWeights(bool verbose = true) {
@@ -1611,12 +1488,19 @@ namespace Othello {
             }
 
             int numClasses = PatternClasses.Length;
+            int numFeatures = Features.Length;
+            int numParams = numClasses + numFeatures;
 
             // Use uniform weights when playbook is unavailable.
             if (entries == null || entries.Count == 0) {
                 for (int i = 0; i < numClasses; i++) {
                     for (int stage = 0; stage < NumGameStages; stage++) {
                         PatternClassWeights[i, stage] = 1.0 / numClasses;
+                    }
+                }
+                for (int i = 0; i < numFeatures; i++) {
+                    for (int stage = 0; stage < NumGameStages; stage++) {
+                        FeatureCoefficients[i, stage] = 0.0;
                     }
                 }
 
@@ -1631,7 +1515,8 @@ namespace Othello {
 
             // Step 1: Extract feature vectors and labels from the playbook, grouped by bucket.
             // Entry.Score is cached after CalculateHeuristics, so ToList() is cheap here.
-            // Features are the per-pattern-class log-odds values (averaged over symmetries).
+            // Features are the per-pattern-class log-odds values (averaged over symmetries),
+            // followed by raw numeric feature values.
             // Labels are 1.0 (win), 0.0 (loss), or 0.5 (draw).
             Console.Write("Extracting feature vectors and labels from playbook entries ({0} entries)...", entries.Count);
             var trainingData = new List<(double[] features, double label)>[NumGameStages];
@@ -1652,7 +1537,7 @@ namespace Othello {
                 else if (score < 0) label = 0.0;
                 else label = 0.5;
 
-                double[] features = new double[numClasses];
+                double[] features = new double[numParams];
                 BoardSymmetries sym = GetBoardSymmetries(node.PlayerBoard, node.OtherBoard);
 
                 for (int i = 0; i < numClasses; i++) {
@@ -1671,6 +1556,11 @@ namespace Othello {
                     }
 
                     features[i] = featureCount > 0 ? featureSum / featureCount : 0.0;
+                }
+
+                // Append raw numeric feature values
+                for (int i = 0; i < numFeatures; i++) {
+                    features[numClasses + i] = Features[i](node);
                 }
 
                 // train/validation split
@@ -1692,7 +1582,9 @@ namespace Othello {
 
             bool[] stageTrained = new bool[NumGameStages];
 
-            for (int stage = 0; stage < NumGameStages; stage++) {
+            // Train stages in reverse order: later stages (closer to endgame) have
+            // more information, so their weights are better starting points for earlier stages.
+            for (int stage = NumGameStages - 1; stage >= 0; stage--) {
                 var trainingDataStage = trainingData[stage];
                 var validationDataStage = validationData[stage];
 
@@ -1704,10 +1596,22 @@ namespace Othello {
                     for (int i = 0; i < numClasses; i++) {
                         PatternClassWeights[i, stage] = 1.0;
                     }
+                    for (int i = 0; i < numFeatures; i++) {
+                        FeatureCoefficients[i, stage] = 0.0;
+                    }
                     continue;
                 }
 
-                double[] weights = new double[numClasses];
+                // Warm-start from next trained stage's weights for faster convergence
+                double[] weights = new double[numParams];
+                if (stage < NumGameStages - 1 && stageTrained[stage + 1]) {
+                    for (int i = 0; i < numClasses; i++) {
+                        weights[i] = PatternClassWeights[i, stage + 1];
+                    }
+                    for (int i = 0; i < numFeatures; i++) {
+                        weights[numClasses + i] = FeatureCoefficients[i, stage + 1];
+                    }
+                }
 
                 if (verbose) {
                     Console.WriteLine("\n  Stage {0} (pieces {1}-{2}, {3} training + {4} validation examples):",
@@ -1715,12 +1619,12 @@ namespace Othello {
                 }
 
                 for (int iter = 0; iter < maxIterations; iter++) {
-                    double[] gradient = new double[numClasses];
+                    double[] gradient = new double[numParams];
                     double trainingLoss = 0.0;
 
                     foreach (var (features, label) in trainingDataStage) {
                         double logit = 0.0;
-                        for (int i = 0; i < numClasses; i++) {
+                        for (int i = 0; i < numParams; i++) {
                             logit += weights[i] * features[i];
                         }
 
@@ -1728,7 +1632,7 @@ namespace Othello {
                         trainingLoss += HeuristicData.CrossEntropyLoss(predictedWinProb, label);
 
                         double error = predictedWinProb - label;
-                        for (int i = 0; i < numClasses; i++) {
+                        for (int i = 0; i < numParams; i++) {
                             gradient[i] += error * features[i];
                         }
                     }
@@ -1737,7 +1641,7 @@ namespace Othello {
                     double validationLoss = 0.0;
                     foreach (var (features, label) in validationDataStage) {
                         double logit = 0.0;
-                        for (int i = 0; i < numClasses; i++) {
+                        for (int i = 0; i < numParams; i++) {
                             logit += weights[i] * features[i];
                         }
 
@@ -1752,7 +1656,7 @@ namespace Othello {
 
                     // L2 regularization contribution to average loss
                     double l2Penalty = 0.0;
-                    for (int i = 0; i < numClasses; i++) {
+                    for (int i = 0; i < numParams; i++) {
                         l2Penalty += 0.5 * lambda * weights[i] * weights[i];
                     }
                     trainingLoss += l2Penalty;
@@ -1764,7 +1668,7 @@ namespace Othello {
                             iter, trainingLoss, validationLoss);
                     }
 
-                    for (int i = 0; i < numClasses; i++) {
+                    for (int i = 0; i < numParams; i++) {
                         gradient[i] /= trainingDataStage.Count;
                         gradient[i] += lambda * weights[i];
                         weights[i] -= learningRate * gradient[i];
@@ -1773,6 +1677,9 @@ namespace Othello {
 
                 for (int i = 0; i < numClasses; i++) {
                     PatternClassWeights[i, stage] = weights[i];
+                }
+                for (int i = 0; i < numFeatures; i++) {
+                    FeatureCoefficients[i, stage] = weights[numClasses + i];
                 }
                 stageTrained[stage] = true;
             }
@@ -1797,6 +1704,7 @@ namespace Othello {
         /// </summary>
         private static void InterpolateUntrainedStages(bool[] stageTrained) {
             int numClasses = PatternClasses.Length;
+            int numFeatures = Features.Length;
 
             for (int stage = 0; stage < NumGameStages; stage++) {
                 if (stageTrained[stage]) continue;
@@ -1805,16 +1713,29 @@ namespace Othello {
                 while (lowerStage >= 0 && !stageTrained[lowerStage]) lowerStage--;
                 while (upperStage < NumGameStages && !stageTrained[upperStage]) upperStage++;
 
-                for (int i = 0; i < numClasses; i++) {
-                    if (lowerStage >= 0 && upperStage < NumGameStages) {
-                        // t = interpolation factor: 0.0 at lowerStage, 1.0 at upperStage
-                        double t = (double)(stage - lowerStage) / (upperStage - lowerStage);
+                if (lowerStage >= 0 && upperStage < NumGameStages) {
+                    double t = (double)(stage - lowerStage) / (upperStage - lowerStage);
+                    for (int i = 0; i < numClasses; i++) {
                         PatternClassWeights[i, stage] =
                             double.Lerp(PatternClassWeights[i, lowerStage], PatternClassWeights[i, upperStage], t);
-                    } else if (lowerStage >= 0) {
+                    }
+                    for (int i = 0; i < numFeatures; i++) {
+                        FeatureCoefficients[i, stage] =
+                            double.Lerp(FeatureCoefficients[i, lowerStage], FeatureCoefficients[i, upperStage], t);
+                    }
+                } else if (lowerStage >= 0) {
+                    for (int i = 0; i < numClasses; i++) {
                         PatternClassWeights[i, stage] = PatternClassWeights[i, lowerStage];
-                    } else if (upperStage < NumGameStages) {
+                    }
+                    for (int i = 0; i < numFeatures; i++) {
+                        FeatureCoefficients[i, stage] = FeatureCoefficients[i, lowerStage];
+                    }
+                } else if (upperStage < NumGameStages) {
+                    for (int i = 0; i < numClasses; i++) {
                         PatternClassWeights[i, stage] = PatternClassWeights[i, upperStage];
+                    }
+                    for (int i = 0; i < numFeatures; i++) {
+                        FeatureCoefficients[i, stage] = FeatureCoefficients[i, upperStage];
                     }
                 }
             }
@@ -1863,32 +1784,15 @@ namespace Othello {
             StreamWriter writer = new StreamWriter(path, false);
 
             try {
+                // Write numeric feature coefficients
+                writer.WriteLine("FeatureCoefficients {0} {1}", Features.Length, NumGameStages);
                 for (int i = 0; i < Features.Length; i++) {
                     WriteComment(writer, "Feature {0}: {1}", i, FeatureNames[i]);
-                    writer.WriteLine("Feature");
-
-                    // Group flat dictionary entries by PieceCount to preserve file format.
-                    var grouped = new SortedDictionary<int, List<KeyValuePair<int, HeuristicData>>>();
-                    foreach (var kvp in FeatureScores[i]) {
-                        if (!grouped.TryGetValue(kvp.Key.PieceCount, out var list)) {
-                            list = new List<KeyValuePair<int, HeuristicData>>();
-                            grouped[kvp.Key.PieceCount] = list;
-                        }
-                        list.Add(new KeyValuePair<int, HeuristicData>(kvp.Key.Value, kvp.Value));
+                    for (int stage = 0; stage < NumGameStages; stage++) {
+                        if (stage > 0) writer.Write(" ");
+                        writer.Write("{0:R}", FeatureCoefficients[i, stage]);
                     }
-
-                    WriteComment(writer, "Data for {0} piece counts", grouped.Count);
-                    foreach (var pieceCountKvp in grouped) {
-                        writer.WriteLine("PieceCount {0}", pieceCountKvp.Key);
-
-                        pieceCountKvp.Value.Sort((a, b) => a.Key.CompareTo(b.Key));
-
-                        WriteComment(writer, 1, "{0} Entries", pieceCountKvp.Value.Count);
-                        foreach (var kvp in pieceCountKvp.Value) {
-                            WriteHeuristicData(writer, kvp.Key, kvp.Value);
-                        }
-                        writer.WriteLine();
-                    }
+                    writer.WriteLine();
                 }
 
                 for (int i = 0; i < PatternClasses.Length; i++) {
@@ -2047,26 +1951,35 @@ namespace Othello {
             try {
                 HeuristicDataMaxCount = 0;
                 string line = null;
-                for (int i = 0; i < Features.Length; i++) {
-                    EatLine(reader, "Feature", line);
 
+                // Skip old-format categorical Feature sections for backward compatibility
+                line = NextLine(reader);
+                while (line != null && line == "Feature") {
                     while (TryEatPrefix(reader, "PieceCount", out line)) {
-                        int pieceCount = int.Parse(line);
+                        // Skip the data line for this piece count
+                        line = NextLine(reader);
+                    }
+                    // line now holds the next non-PieceCount line (possibly another "Feature" or something else)
+                }
 
+                // Read numeric feature coefficients
+                if (line != null && line.StartsWith("FeatureCoefficients")) {
+                    string[] header = line.Split(' ');
+                    int numFeatures = int.Parse(header[1]);
+                    int numStages = int.Parse(header[2]);
+                    for (int i = 0; i < numFeatures && i < Features.Length; i++) {
                         line = NextLine(reader);
                         CheckEOF(line);
-                        foreach (string entry in line.Split((char[])null, StringSplitOptions.RemoveEmptyEntries)) {
-                            int value;
-                            HeuristicData orig;
-                            HeuristicData data = ParseHeuristicData(entry, int.Parse, out value);
-                            var key = new FeatureKey(pieceCount, value);
-                            if (FeatureScores[i].TryGetValue(key, out orig)) {
-                                FeatureScores[i][key] = new HeuristicData(orig, data);
-                            } else {
-                                FeatureScores[i][key] = data;
-                            }
+                        string[] values = line.Split(' ');
+                        for (int stage = 0; stage < numStages && stage < NumGameStages; stage++) {
+                            FeatureCoefficients[i, stage] = double.Parse(values[stage]);
                         }
                     }
+                    // Skip extra features if the file has more than we expect
+                    for (int i = Features.Length; i < numFeatures; i++) {
+                        NextLine(reader);
+                    }
+                    line = null;
                 }
 
                 for (int i = 0; i < PatternClasses.Length; i++) {
@@ -2350,6 +2263,16 @@ namespace Othello {
 
                 for (int stage = 0; stage < NumGameStages; stage++) {
                     Console.WriteLine("{0:00} \t{1:00.000}", stage, PatternClassWeights[i, stage]);
+                }
+
+                Console.WriteLine();
+            }
+
+            for (int i = 0; i < Features.Length; i++) {
+                Console.WriteLine("Feature {0}: {1}", i, FeatureNames[i]);
+
+                for (int stage = 0; stage < NumGameStages; stage++) {
+                    Console.WriteLine("{0:00} \t{1:00.000}", stage, FeatureCoefficients[i, stage]);
                 }
 
                 Console.WriteLine();

@@ -230,10 +230,12 @@ namespace Othello {
 
                     int probabilityReciprocal = 8;
                     if (this.Exploring) {
-                        // Decrease likelihood of skipping this node if more of the features are unknown.
-                        double known = OthelloNode.Features.Length - nodes[best].UnknownFeatures();
+                        // Decrease likelihood of skipping this node if more of the patterns are unknown.
+                        double unknown = nodes[best].UnknownPatterns();
+                        unknown /= 8.0; // UnknownPatterns counts 8x due to symmetries
+                        double known = OthelloNode.PatternClasses.Length - unknown;
                         known *= known;
-                        known /= OthelloNode.Features.Length * OthelloNode.Features.Length;
+                        known /= OthelloNode.PatternClasses.Length * OthelloNode.PatternClasses.Length;
                         known = Math.Sqrt(known);
 
                         probabilityReciprocal += (int)(probabilityReciprocal * known);
