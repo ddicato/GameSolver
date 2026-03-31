@@ -446,6 +446,8 @@ namespace Othello {
 
                 // Second pass - create playbook entries.
                 int badSolvedScores = 0;
+                int firstBadIndex = -1;
+                int? firstBadScore = null;
                 Entry[] entryArray = new Entry[entryCount];
                 for (int i = 0; i < entryCount; i++) {
                     if (i % (entryCount / 100) == 0) {
@@ -464,6 +466,10 @@ namespace Othello {
                         Debug.Assert(solvedScore != null);
                         if (solvedScore.Value < -64 || solvedScore.Value > 64) {
                             badSolvedScores++;
+                            if (firstBadIndex < 0) {
+                                firstBadIndex = i;
+                                firstBadScore = solvedScore.Value;
+                            }
                         } else {
                             Debug.Assert(entry.SolvedScore == null || entry.SolvedScore.Value == solvedScore.Value);
                             entry.SolvedScore = solvedScore.Value;
@@ -510,7 +516,18 @@ namespace Othello {
                 Console.Write(" | ");
 
                 if (badSolvedScores > 0) {
-                    Console.Write("WARNING: skipped {0} out-of-range SolvedScore(s). ", badSolvedScores);
+                    Console.WriteLine();
+                    Console.WriteLine("WARNING: skipped {0} out-of-range SolvedScore(s).", badSolvedScores);
+
+                    // Print diagnostic for the first offending entry.
+                    if (firstBadIndex >= 0) {
+                        Entry badEntry = entryArray[firstBadIndex];
+                        Console.WriteLine();
+                        Console.WriteLine("=== First out-of-range SolvedScore (index {0}, value {1}) ===", firstBadIndex, firstBadScore);
+                        badEntry.PrintDiagnostic();
+                        Console.WriteLine("=== End diagnostic ===");
+                        Console.WriteLine();
+                    }
                 }
             } catch (Exception ex) {
                 Console.WriteLine("error.");
@@ -785,7 +802,6 @@ namespace Othello {
                 }
             }
 
-#if DEBUG
             private int? solvedScore;
             public int? SolvedScore {
                 get {
@@ -793,16 +809,16 @@ namespace Othello {
                 }
 
                 internal set {
+                    if (value != null && (value < -64 || value > 64)) {
+                        Console.WriteLine();
+                        Console.WriteLine("WARNING: out-of-range SolvedScore {0} being set:", value);
+                        this.PrintDiagnostic();
+                        Console.WriteLine(new System.Diagnostics.StackTrace());
+                    }
                     Debug.Assert(value == null || value >= -64 && value <= 64);
                     this.solvedScore = value;
                 }
             }
-#else
-            public int? SolvedScore {
-                get;
-                internal set;
-            }
-#endif
 
             public int UnexploredChildren {
                 get {
@@ -853,6 +869,28 @@ namespace Othello {
 
                 if (this.Children.Add(child)) {
                     this.InvalidateCachedScore();
+                }
+            }
+
+            /// <summary>
+            /// Prints board state, parents, and children with their SolvedScores for debugging.
+            /// </summary>
+            internal void PrintDiagnostic() {
+                Console.WriteLine("Board ({0} pieces, turn={1}, pass={2}, gameOver={3}):",
+                    this.State.OccupiedSquareCount,
+                    this.State.Turn == OthelloNode.BLACK ? "Black" : "White",
+                    this.State.Pass,
+                    this.State.IsGameOver);
+                Console.WriteLine(this.State);
+                Console.WriteLine("Parents ({0}):", this.Parents.Count);
+                foreach (Entry parent in this.Parents) {
+                    Console.WriteLine("  {0} pieces, solvedScore={1}, pass={2}",
+                        parent.State.OccupiedSquareCount, parent.SolvedScore, parent.State.Pass);
+                }
+                Console.WriteLine("Children ({0}):", this.Children.Count);
+                foreach (Entry child in this.Children) {
+                    Console.WriteLine("  {0} pieces, solvedScore={1}, pass={2}",
+                        child.State.OccupiedSquareCount, child.SolvedScore, child.State.Pass);
                 }
             }
 
