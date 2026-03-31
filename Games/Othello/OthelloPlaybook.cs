@@ -231,7 +231,7 @@ namespace Othello {
         /// Materializes all playbook entries, caching Entry.Score values (which may trigger
         /// expensive negamax evaluation on first call). Prints progress to console.
         /// </summary>
-        public new List<KeyValuePair<OthelloNode, int>> ToList() {
+        public List<KeyValuePair<OthelloNode, int>> ToList() {
             DateTime start = DateTime.Now;
             Console.Write("Materializing playbook entries...");
             var result = Enumerable.ToList(this);

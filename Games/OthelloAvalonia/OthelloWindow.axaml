@@ -251,10 +251,16 @@
                 Randomness
             </CheckBox>
             <CheckBox IsChecked="{Binding Training}">
-                Training
+                Training (Write to playbook)
             </CheckBox>
             <CheckBox IsChecked="{Binding Memo}">
-                Memoize
+                Memoize (Use playbook)
+            </CheckBox>
+            <CheckBox IsChecked="{Binding UseLogisticHeuristics}">
+                Use logistic heuristics
+            </CheckBox>
+            <CheckBox IsChecked="{Binding UseLogisticWeights}">
+                Use logistic weights
             </CheckBox>
 
             <Grid>

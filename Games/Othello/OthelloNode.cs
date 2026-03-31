@@ -1232,6 +1232,11 @@ namespace Othello {
             }
 
             public int CalculateScore() {
+                if (!UseLogisticHeuristics) {
+                    // Old approach: simple average of piece-count outcomes.
+                    return (int)Math.Round(this.TotalScore / this.Count * ScoreMultiplier);
+                }
+
                 const double pseudoCount = 8.0; // Bayesian prior — regularizes toward winProb=0.5 (logit=0)
 
                 double sampleCount = this.Count;
@@ -1425,6 +1430,18 @@ namespace Othello {
         // TODO: interpolate between turns when averaging. For features, also interpolate between feature values
         // TODO: more and better learning algorithms: Gradient descent, Temporal-difference
 
+        /// <summary>
+        /// When true, HeuristicData.CalculateScore uses log-odds of win probability.
+        /// When false, uses simple average of piece-count outcomes (the old approach).
+        /// </summary>
+        public static bool UseLogisticHeuristics = true;
+
+        /// <summary>
+        /// When true, CalculateWeights uses logistic regression to learn per-pattern-class
+        /// weights. When false, all pattern classes are weighted uniformly.
+        /// </summary>
+        public static bool UseLogisticWeights = true;
+
         // Log-odds score (roughly in [-9.2,9.2]) will be stored as fixed-precision int, and as such, is multiplied by
         // this factor to preserve additional significant digits.
         private const int ScoreMultiplier = 10000; // TODO: serialize this so it is changeable
@@ -1612,9 +1629,8 @@ namespace Othello {
 
             int numClasses = PatternClasses.Length;
 
-            // The logistic regression requires playbook data to learn weights.
-            // Fall back to uniform weights when the playbook is not loaded.
-            if (entries == null || entries.Count == 0) {
+            // Use uniform weights when logistic regression is disabled or playbook is unavailable.
+            if (!UseLogisticWeights || entries == null || entries.Count == 0) {
                 for (int i = 0; i < numClasses; i++) {
                     for (int stage = 0; stage < NumGameStages; stage++) {
                         PatternClassWeights[i, stage] = 1.0 / numClasses;
@@ -1624,8 +1640,9 @@ namespace Othello {
                 CalculatePatternScores();
 
                 if (verbose) {
-                    Console.WriteLine("done (no playbook, uniform weights). Time elapsed = {0:0.000} seconds.",
-                        (DateTime.Now - start).TotalSeconds);
+                    string reason = !UseLogisticWeights ? "logistic weights disabled" : "no playbook";
+                    Console.WriteLine("done ({0}, uniform weights). Time elapsed = {1:0.000} seconds.",
+                        reason, (DateTime.Now - start).TotalSeconds);
                 }
                 return;
             }
@@ -1634,7 +1651,7 @@ namespace Othello {
             // Entry.Score is cached after CalculateHeuristics, so ToList() is cheap here.
             // Features are the per-pattern-class log-odds values (averaged over symmetries).
             // Labels are 1.0 (win), 0.0 (loss), or 0.5 (draw).
-            Console.WriteLine("Extracting feature vectors and labels from playbook entries ({0} entries)...", entries.Count);
+            Console.Write("Extracting feature vectors and labels from playbook entries ({0} entries)...", entries.Count);
             var trainingData = new List<(double[] features, double label)>[NumGameStages];
             var validationData = new List<(double[] features, double label)>[NumGameStages];
             for (int stage = 0; stage < NumGameStages; stage++) {
@@ -1675,12 +1692,15 @@ namespace Othello {
                 }
 
                 // train/validation split
-                if (Random.Shared.NextDouble() < 0.2) {
+                // Note: split is currently disabled on the theory that features are sparse and
+                // they all need to be trained on.
+                if (Random.Shared.NextDouble() < 0.0) {
                     validationData[stage].Add((features, label));
                 } else {
                     trainingData[stage].Add((features, label));
                 }
             }
+            Console.WriteLine("done. Time elapsed = {0:0.000} seconds.", (DateTime.Now - start).TotalSeconds);
 
             // Step 2: Learn weights via logistic regression per game stage.
             const double learningRate = 0.01;

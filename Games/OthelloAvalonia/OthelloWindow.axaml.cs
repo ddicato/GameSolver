@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Threading;
@@ -111,6 +111,26 @@ namespace OthelloAvalonia {
             set { _memo = value; OnPropertyChanged(nameof(Memo)); }
         }
 
+        private bool _useLogisticHeuristics = true;
+        public bool UseLogisticHeuristics {
+            get => _useLogisticHeuristics;
+            set {
+                _useLogisticHeuristics = value;
+                OthelloNode.UseLogisticHeuristics = value;
+                OnPropertyChanged(nameof(UseLogisticHeuristics));
+            }
+        }
+
+        private bool _useLogisticWeights = true;
+        public bool UseLogisticWeights {
+            get => _useLogisticWeights;
+            set {
+                _useLogisticWeights = value;
+                OthelloNode.UseLogisticWeights = value;
+                OnPropertyChanged(nameof(UseLogisticWeights));
+            }
+        }
+
         #endregion
 
         private static int Eval0(OthelloNode node) {
@@ -144,7 +164,7 @@ namespace OthelloAvalonia {
             Player<OthelloNode> black =
                 new MtdFPlayer(this.SearchDepth, node => node.PatternScoreSlow(), verbose: verbose, solveEndgame: true, randomness: this.Randomness);
             Player<OthelloNode> white =
-                new MtdFPlayer(this.SearchDepth, OthelloNode.Eval1, verbose: verbose, solveEndgame: true, randomness: this.Randomness);
+                new MtdFPlayer(this.SearchDepth + 1, OthelloNode.Eval1, verbose: verbose, solveEndgame: true, randomness: this.Randomness);
 
             if (this.AiSwap) {
                 this.blackPlayer = white;

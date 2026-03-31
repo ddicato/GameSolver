@@ -13,6 +13,35 @@ namespace Othello {
         const string ParamsPath = "params.txt";
         const string PlaybookPath = "playbook.txt";
 
+        static void Main(string[] args) {
+            var options = new (string Name, Action<string[]> Action)[] {
+                ("Training (self-play loop)", TrainingMain),
+                ("Benchmark (A/B heuristics comparison)", BenchmarkMain),
+                ("Solve playbook leaves", SolvePlaybookLeavesMain),
+                ("Repair SolvedScores", RepairSolvedScoresMain),
+                ("Run tests", TestMain),
+            };
+
+            while (true) {
+                Console.WriteLine();
+                Console.WriteLine("Select a mode:");
+                for (int i = 0; i < options.Length; i++) {
+                    Console.WriteLine("  {0}. {1}", i + 1, options[i].Name);
+                }
+                Console.WriteLine("  {0}. Exit", options.Length + 1);
+                Console.Write("> ");
+
+                string input = Console.ReadLine();
+                if (int.TryParse(input, out int choice) && choice >= 1 && choice <= options.Length + 1) {
+                    if (choice == options.Length + 1) {
+                        return;
+                    }
+                    Console.WriteLine();
+                    options[choice - 1].Action(args);
+                }
+            }
+        }
+
         /// <summary>
         /// Repairs playbook SolvedScores that were computed with the wrong negamax
         /// formula (-max instead of -min). Clears backfilled (non-leaf) SolvedScores,
@@ -202,17 +231,17 @@ namespace Othello {
         }
 
         // TODO: verbosity levels: Board, Turn, Game, GameSet, Output, None
-        static void Main(string[] args) {
+        static void TrainingMain(string[] args) {
             const bool verbose = false;
             const bool memoize = true;
             const TrainingMode randomTraining = TrainingMode.LossDraw;
             const TrainingMode selfTraining = TrainingMode.All;
             const TrainingMode adversarialTraining = TrainingMode.All;
-            const bool continueRandomGames = true;
+            const bool continueRandomGames = false;
             const int randomGames = 100;
-            const int selfGames = 100;
-            const int adversarialGames = 250;
-            const int depth = 4;
+            const int selfGames = 50;
+            const int adversarialGames = 50;
+            const int depth = 5;
 
             Player<OthelloNode> p0;
             Player<OthelloNode> p1;
@@ -227,9 +256,10 @@ namespace Othello {
             int adversarialGamesPlayed = 0;
 
             OthelloNode.ReadPlaybook(PlaybookPath);
-            OthelloNode.ReadHeuristics(ParamsPath);
             OthelloNode.PrintPlaybookStats();
-            
+            OthelloNode.ReadHeuristics(ParamsPath);
+            OthelloNode.CalculateHeuristics();
+
             do {
                 p0 = new MtdFPlayer(1, patternEval, verbose: verbose, randomness: false);
                 p1 = new RandomPlayer() { Verbose = verbose };
@@ -270,6 +300,91 @@ namespace Othello {
 
             Console.WriteLine("Press Enter to exit.");
             Console.ReadLine();
+        }
+
+        /// <summary>
+        /// A/B comparison of all 4 combinations of logistic heuristics on/off and logistic weights
+        /// on/off. Plays 100 games per combination (Player 1 vs Adversary), no MemoPlayer,
+        /// alternating black/white for fairness. No training.
+        /// </summary>
+        static void BenchmarkMain(string[] args) {
+            const int games = 100;
+            const int depth = 5;
+
+            OthelloNode.ReadPlaybook(PlaybookPath);
+            OthelloNode.ReadHeuristics(ParamsPath);
+
+            Func<OthelloNode, int> patternEval = node => node.PatternScoreSlow();
+
+            var results = new List<(string Label, int Wins, int Losses, int Draws, int TotalScore)>();
+
+            foreach (bool useLogisticHeuristics in new[] { false, true }) {
+                foreach (bool useLogisticWeights in new[] { true, false }) {
+                    string hLabel = useLogisticHeuristics ? "log-odds" : "piece-avg";
+                    string wLabel = useLogisticWeights ? "logistic" : "uniform";
+                    string label = string.Format("{0} / {1} wt", hLabel, wLabel);
+
+                    Console.WriteLine();
+                    Console.WriteLine("========================================");
+                    Console.WriteLine("  Heuristics: {0}, Weights: {1}", hLabel, wLabel);
+                    Console.WriteLine("========================================");
+
+                    OthelloNode.UseLogisticHeuristics = useLogisticHeuristics;
+                    OthelloNode.UseLogisticWeights = useLogisticWeights;
+                    OthelloNode.CalculateHeuristics();
+
+                    int wins = 0, losses = 0, draws = 0, totalScore = 0;
+
+                    for (int i = 0; i < games; i++) {
+                        Console.Write("Game {0}/{1}: ", i + 1, games);
+
+                        var p0 = new MtdFPlayer(depth, patternEval, randomness: true);
+                        var p1 = new MtdFPlayer(depth + 1, OthelloNode.Eval1, randomness: true);
+
+                        int result;
+                        if ((i & 1) == 0) {
+                            result = GameLoop(p0, "Player 1", p1, "Adversary+", null);
+                        } else {
+                            result = GameLoop(p1, "Adversary+", p0, "Player 1", null);
+                            result = -result;
+                        }
+
+                        totalScore += result;
+                        if (result > 0) wins++;
+                        else if (result < 0) losses++;
+                        else draws++;
+
+                        Console.WriteLine(
+                            "  score={0:+0;-0;0} (P1 as {1}) running: {2}W {3}L {4}D avg={5:+0.0;-0.0;0.0}",
+                            result,
+                            (i & 1) == 0 ? "black" : "white",
+                            wins, losses, draws,
+                            (double)totalScore / (i + 1));
+                    }
+
+                    results.Add((label, wins, losses, draws, totalScore));
+                }
+            }
+
+            // Print comparison.
+            Console.WriteLine();
+            Console.WriteLine("========================================");
+            Console.WriteLine("  Results: Player 1 vs Adversary+");
+            Console.WriteLine("  ({0} games each, depth {1})", games, depth);
+            Console.WriteLine("========================================");
+            Console.WriteLine();
+            Console.WriteLine("{0,-24} {1,6} {2,6} {3,6} {4,10} {5,10}",
+                "Setting", "Wins", "Losses", "Draws", "Avg Score", "Win Rate");
+            Console.WriteLine(new string('-', 68));
+
+            foreach (var (label, w, l, d, s) in results) {
+                Console.WriteLine("{0,-24} {1,6} {2,6} {3,6} {4,10:+0.00;-0.00;0.00} {5,9:0.0}%",
+                    label, w, l, d,
+                    (double)s / games,
+                    100.0 * w / games);
+            }
+
+            Console.WriteLine();
         }
 
         // TODO: Parallelize this. We're wasting cycles. Or, remove the threads param.
@@ -401,10 +516,10 @@ namespace Othello {
             gamesPlayed += games;
 
             if (training != TrainingMode.None && games > 0) {
-                OthelloNode.CalculateHeuristics();
-                OthelloNode.WritePlaybook(PlaybookPath);
-                OthelloNode.WriteHeuristics(ParamsPath);
                 OthelloNode.PrintPlaybookStats();
+                OthelloNode.WritePlaybook(PlaybookPath);
+                OthelloNode.CalculateHeuristics();
+                OthelloNode.WriteHeuristics(ParamsPath);
 
                 Console.WriteLine();
             }
