@@ -95,6 +95,10 @@ namespace Othello {
         }
 
         public int GetScore(OthelloNode node) {
+            if (node.IsGameOver) {
+                return node.PieceCountSpread();
+            }
+
             int bestScore;
             this.SelectNode(node.GetChildren(), out bestScore);
             return bestScore;
