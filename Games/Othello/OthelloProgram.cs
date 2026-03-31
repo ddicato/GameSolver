@@ -16,7 +16,7 @@ namespace Othello {
         static void Main(string[] args) {
             var options = new (string Name, Action<string[]> Action)[] {
                 ("Training (self-play loop)", TrainingMain),
-                ("Benchmark (A/B heuristics comparison)", BenchmarkMain),
+                ("Benchmark (vs Adversary)", BenchmarkMain),
                 ("Solve playbook leaves", SolvePlaybookLeavesMain),
                 ("Repair SolvedScores", RepairSolvedScoresMain),
                 ("Run tests", TestMain),
@@ -303,9 +303,8 @@ namespace Othello {
         }
 
         /// <summary>
-        /// A/B comparison of all 4 combinations of logistic heuristics on/off and logistic weights
-        /// on/off. Plays 100 games per combination (Player 1 vs Adversary), no MemoPlayer,
-        /// alternating black/white for fairness. No training.
+        /// Benchmark PatternScoreSlow against Adversary (Eval1 at depth) and Adversary+
+        /// (Eval1 at depth+1). Alternates black/white for fairness and tracks per-color stats.
         /// </summary>
         static void BenchmarkMain(string[] args) {
             const int games = 100;
@@ -313,75 +312,79 @@ namespace Othello {
 
             OthelloNode.ReadPlaybook(PlaybookPath);
             OthelloNode.ReadHeuristics(ParamsPath);
+            OthelloNode.CalculateHeuristics();
 
             Func<OthelloNode, int> patternEval = node => node.PatternScoreSlow();
 
-            var results = new List<(string Label, int Wins, int Losses, int Draws, int TotalScore)>();
+            var trials = new (string Name, Func<OthelloNode, int> Eval, int Depth)[] {
+                ("Adversary (Eval1, depth " + depth + ")", OthelloNode.Eval1, depth),
+                ("Adversary+ (Eval1, depth " + (depth + 1) + ")", OthelloNode.Eval1, depth + 1),
+            };
 
-            foreach (bool useLogisticHeuristics in new[] { false, true }) {
-                foreach (bool useLogisticWeights in new[] { true, false }) {
-                    string hLabel = useLogisticHeuristics ? "log-odds" : "piece-avg";
-                    string wLabel = useLogisticWeights ? "logistic" : "uniform";
-                    string label = string.Format("{0} / {1} wt", hLabel, wLabel);
+            var results = new List<(string Label, int Wins, int Losses, int Draws, int TotalScore,
+                int BlackWins, int BlackLosses, int BlackDraws, int WhiteWins, int WhiteLosses, int WhiteDraws)>();
 
-                    Console.WriteLine();
-                    Console.WriteLine("========================================");
-                    Console.WriteLine("  Heuristics: {0}, Weights: {1}", hLabel, wLabel);
-                    Console.WriteLine("========================================");
+            foreach (var (name, eval, oppDepth) in trials) {
+                Console.WriteLine();
+                Console.WriteLine("========================================");
+                Console.WriteLine("  Player 1 (PatternScoreSlow, depth {0}) vs {1}", depth, name);
+                Console.WriteLine("========================================");
 
-                    OthelloNode.UseLogisticHeuristics = useLogisticHeuristics;
-                    OthelloNode.UseLogisticWeights = useLogisticWeights;
-                    OthelloNode.CalculateHeuristics();
+                int wins = 0, losses = 0, draws = 0, totalScore = 0;
+                int bWins = 0, bLosses = 0, bDraws = 0;
+                int wWins = 0, wLosses = 0, wDraws = 0;
 
-                    int wins = 0, losses = 0, draws = 0, totalScore = 0;
+                for (int i = 0; i < games; i++) {
+                    Console.Write("Game {0}/{1}: ", i + 1, games);
 
-                    for (int i = 0; i < games; i++) {
-                        Console.Write("Game {0}/{1}: ", i + 1, games);
+                    var p0 = new MtdFPlayer(depth, patternEval, randomness: true);
+                    var p1 = new MtdFPlayer(oppDepth, eval, randomness: true);
 
-                        var p0 = new MtdFPlayer(depth, patternEval, randomness: true);
-                        var p1 = new MtdFPlayer(depth + 1, OthelloNode.Eval1, randomness: true);
-
-                        int result;
-                        if ((i & 1) == 0) {
-                            result = GameLoop(p0, "Player 1", p1, "Adversary+", null);
-                        } else {
-                            result = GameLoop(p1, "Adversary+", p0, "Player 1", null);
-                            result = -result;
-                        }
-
-                        totalScore += result;
-                        if (result > 0) wins++;
-                        else if (result < 0) losses++;
-                        else draws++;
-
-                        Console.WriteLine(
-                            "  score={0:+0;-0;0} (P1 as {1}) running: {2}W {3}L {4}D avg={5:+0.0;-0.0;0.0}",
-                            result,
-                            (i & 1) == 0 ? "black" : "white",
-                            wins, losses, draws,
-                            (double)totalScore / (i + 1));
+                    int result;
+                    bool p0IsBlack = (i & 1) == 0;
+                    if (p0IsBlack) {
+                        result = GameLoop(p0, "Player 1", p1, name, null);
+                    } else {
+                        result = GameLoop(p1, name, p0, "Player 1", null);
+                        result = -result;
                     }
 
-                    results.Add((label, wins, losses, draws, totalScore));
+                    totalScore += result;
+                    if (result > 0) { wins++; if (p0IsBlack) bWins++; else wWins++; }
+                    else if (result < 0) { losses++; if (p0IsBlack) bLosses++; else wLosses++; }
+                    else { draws++; if (p0IsBlack) bDraws++; else wDraws++; }
+
+                    Console.WriteLine(
+                        "  score={0:+0;-0;0} (P1 as {1}) running: {2}W {3}L {4}D avg={5:+0.0;-0.0;0.0}",
+                        result,
+                        p0IsBlack ? "black" : "white",
+                        wins, losses, draws,
+                        (double)totalScore / (i + 1));
                 }
+
+                results.Add((name, wins, losses, draws, totalScore,
+                    bWins, bLosses, bDraws, wWins, wLosses, wDraws));
             }
 
             // Print comparison.
             Console.WriteLine();
             Console.WriteLine("========================================");
-            Console.WriteLine("  Results: Player 1 vs Adversary+");
-            Console.WriteLine("  ({0} games each, depth {1})", games, depth);
+            Console.WriteLine("  Results: Player 1 (PatternScoreSlow, depth {0})", depth);
+            Console.WriteLine("  ({0} games each, alternating black/white)", games);
             Console.WriteLine("========================================");
             Console.WriteLine();
-            Console.WriteLine("{0,-24} {1,6} {2,6} {3,6} {4,10} {5,10}",
-                "Setting", "Wins", "Losses", "Draws", "Avg Score", "Win Rate");
-            Console.WriteLine(new string('-', 68));
+            Console.WriteLine("{0,-35} {1,6} {2,6} {3,6} {4,10} {5,10}",
+                "Opponent", "Wins", "Losses", "Draws", "Avg Score", "Win Rate");
+            Console.WriteLine(new string('-', 79));
 
-            foreach (var (label, w, l, d, s) in results) {
-                Console.WriteLine("{0,-24} {1,6} {2,6} {3,6} {4,10:+0.00;-0.00;0.00} {5,9:0.0}%",
-                    label, w, l, d,
-                    (double)s / games,
-                    100.0 * w / games);
+            foreach (var r in results) {
+                Console.WriteLine("{0,-35} {1,6} {2,6} {3,6} {4,10:+0.00;-0.00;0.00} {5,9:0.0}%",
+                    r.Label, r.Wins, r.Losses, r.Draws,
+                    (double)r.TotalScore / games,
+                    100.0 * r.Wins / games);
+                Console.WriteLine("  as black: {0,3}W {1,3}L {2,3}D    as white: {3,3}W {4,3}L {5,3}D",
+                    r.BlackWins, r.BlackLosses, r.BlackDraws,
+                    r.WhiteWins, r.WhiteLosses, r.WhiteDraws);
             }
 
             Console.WriteLine();

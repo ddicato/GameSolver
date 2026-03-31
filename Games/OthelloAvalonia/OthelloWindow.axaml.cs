@@ -111,26 +111,6 @@ namespace OthelloAvalonia {
             set { _memo = value; OnPropertyChanged(nameof(Memo)); }
         }
 
-        private bool _useLogisticHeuristics = true;
-        public bool UseLogisticHeuristics {
-            get => _useLogisticHeuristics;
-            set {
-                _useLogisticHeuristics = value;
-                OthelloNode.UseLogisticHeuristics = value;
-                OnPropertyChanged(nameof(UseLogisticHeuristics));
-            }
-        }
-
-        private bool _useLogisticWeights = true;
-        public bool UseLogisticWeights {
-            get => _useLogisticWeights;
-            set {
-                _useLogisticWeights = value;
-                OthelloNode.UseLogisticWeights = value;
-                OnPropertyChanged(nameof(UseLogisticWeights));
-            }
-        }
-
         #endregion
 
         private static int Eval0(OthelloNode node) {

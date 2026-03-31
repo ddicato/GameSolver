@@ -256,13 +256,6 @@
             <CheckBox IsChecked="{Binding Memo}">
                 Memoize (Use playbook)
             </CheckBox>
-            <CheckBox IsChecked="{Binding UseLogisticHeuristics}">
-                Use logistic heuristics
-            </CheckBox>
-            <CheckBox IsChecked="{Binding UseLogisticWeights}">
-                Use logistic weights
-            </CheckBox>
-
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
