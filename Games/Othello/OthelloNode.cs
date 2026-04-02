@@ -324,8 +324,6 @@ namespace Othello {
                 PatternScores[i] = new Dictionary<PatternClassKey, HeuristicData>();
             }
 
-            // TODO: these are equally weighted. Measure how well they correlate with victory and tune
-            //       weights accordingly. Also find a weight with respect to Pattern evaluation
             Features = new Func<OthelloNode, int>[] {
                 node => node.PieceCountSpread(),
                 node => node.CornerSpread(),
@@ -1127,11 +1125,6 @@ namespace Othello {
         public static readonly ulong[][] PatternClasses;
         private static readonly Dictionary<PatternClassKey, HeuristicData>[] PatternClassScores;
         private static readonly double[,] PatternClassWeights;
-        private const int GameStageShift = 2;
-        private const int NumGameStages = 64 >> GameStageShift;
-        public static int GameStage(int pieceCount) => (pieceCount - 1) >> GameStageShift;
-        public static int PieceCountMin(int stage) => (stage << GameStageShift) + 1;
-        public static int PieceCountMax(int stage) => Math.Min(64, (stage + 1) << GameStageShift);
 
         private static readonly ulong[] Patterns;
         private static readonly Dictionary<PatternClassKey, HeuristicData>[] PatternScores;
@@ -1144,7 +1137,7 @@ namespace Othello {
         public static readonly Func<OthelloNode, int>[] Features;
         public static readonly string[] FeatureNames;
         // Learned coefficients for numeric features: β[featureIndex, gameStage]
-        private static double[,] FeatureCoefficients;
+        private static readonly double[,] FeatureCoefficients;
 
         private readonly struct PatternClassKey(int pieceCount, ulong self, ulong other) : IEquatable<PatternClassKey> {
             public readonly int PieceCount = pieceCount;
@@ -1158,6 +1151,12 @@ namespace Othello {
 
             public override int GetHashCode() => HashCode.Combine(PieceCount, Self, Other);
         }
+
+        private const int GameStageShift = 2;
+        private const int NumGameStages = 64 >> GameStageShift;
+        public static int GameStage(int pieceCount) => (pieceCount - 1) >> GameStageShift;
+        public static int PieceCountMin(int stage) => (stage << GameStageShift) + 1;
+        public static int PieceCountMax(int stage) => Math.Min(64, (stage + 1) << GameStageShift);
 
         private struct HeuristicData {
             public int Score; // TODO: rename this? Could be confused with Total[,Win,Loss]Score
@@ -1220,7 +1219,7 @@ namespace Othello {
                 this.Score = this.CalculateScore();
             }
 
-            public int CalculateScore() {
+            public readonly int CalculateScore() {
                 const double pseudoCount = 8.0; // Bayesian prior — regularizes toward winProb=0.5 (logit=0)
 
                 double sampleCount = this.Count;
@@ -1342,7 +1341,7 @@ namespace Othello {
         // this factor to preserve additional significant digits.
         private const int ScoreMultiplier = 10000; // TODO: serialize this so it is changeable
 
-        public static OthelloPlaybook Playbook;
+        public static readonly OthelloPlaybook Playbook;
 
         /// <summary>
         /// Adds the given game history to the playbook.
@@ -1533,8 +1532,8 @@ namespace Othello {
 
                 double label;
                 // TODO: should these be close to 0/1 instead of exactly 0/1? To prevent saturating sigmoid?
-                if (score > 0) label = 1.0;
-                else if (score < 0) label = 0.0;
+                if (score > 0) label = 0.99;
+                else if (score < 0) label = 0.01;
                 else label = 0.5;
 
                 double[] features = new double[numParams];
@@ -1576,8 +1575,10 @@ namespace Othello {
 
             // Step 2: Learn weights via logistic regression per game stage.
             const double learningRate = 0.01;
-            const double lambda = 1e-3; // L2 regularization
-            const int maxIterations = 500;
+            const double featureLearningRate = 0.025; // Separate learning rate for numeric feature coefficients
+            const double lambda = 1e-3; // L2 regularization for pattern weights
+            const double featureLambda = 1e-4; // L2 regularization for numeric feature coefficients
+            const int defaultMaxIterations = 500;
             const int minExamples = 20;
 
             bool[] stageTrained = new bool[NumGameStages];
@@ -1616,8 +1617,17 @@ namespace Othello {
                 if (verbose) {
                     Console.WriteLine("\n  Stage {0} (pieces {1}-{2}, {3} training + {4} validation examples):",
                         stage, PieceCountMin(stage), PieceCountMax(stage), trainingDataStage.Count, validationDataStage.Count);
+                    Console.WriteLine("   feature names = [{0}]", string.Join(", ", FeatureNames));
                 }
 
+                int maxIterations = defaultMaxIterations;
+                // More iterations in earlier stages, where slower learning was observed empirically.
+                // TODO: More adaptive strategies, early stopping, picking generation with min loss, etc.
+                if (stage <= 7) {
+                    maxIterations <<= 1;
+                } else if (stage <= 10) {
+                    maxIterations += maxIterations >> 1;
+                }
                 for (int iter = 0; iter < maxIterations; iter++) {
                     double[] gradient = new double[numParams];
                     double trainingLoss = 0.0;
@@ -1656,22 +1666,34 @@ namespace Othello {
 
                     // L2 regularization contribution to average loss
                     double l2Penalty = 0.0;
-                    for (int i = 0; i < numParams; i++) {
+                    for (int i = 0; i < numClasses; i++) {
                         l2Penalty += 0.5 * lambda * weights[i] * weights[i];
+                    }
+                    for (int i = numClasses; i < numParams; i++) {
+                        l2Penalty += 0.5 * featureLambda * weights[i] * weights[i];
                     }
                     trainingLoss += l2Penalty;
                     validationLoss += l2Penalty;
 
-                    if (verbose && (iter == 0 || iter == maxIterations - 1 || (iter + 1) % 50 == 0)) {
-                        Console.WriteLine(
-                            "    iter {0,3}: train loss = {1:0.000000} validation loss = {2:0.000000}",
-                            iter, trainingLoss, validationLoss);
-                    }
-
-                    for (int i = 0; i < numParams; i++) {
+                    for (int i = 0; i < numClasses; i++) {
                         gradient[i] /= trainingDataStage.Count;
                         gradient[i] += lambda * weights[i];
                         weights[i] -= learningRate * gradient[i];
+                    }
+                    for (int i = numClasses; i < numParams; i++) {
+                        gradient[i] /= trainingDataStage.Count;
+                        gradient[i] += featureLambda * weights[i];
+                        weights[i] -= featureLearningRate * gradient[i];
+                    }
+
+                    if (verbose && (iter == 0 || iter == maxIterations - 1 || (iter + 1) % 50 == 0)) {
+                        Console.Write(
+                            "    iter {0,3}: train loss = {1:0.000000} \tvalidation loss = {2:0.000000}",
+                            iter, trainingLoss, validationLoss);
+                        Console.WriteLine(
+                            " \tfeature weights = [{0}]",
+                            string.Join(
+                                ", ", weights.Skip(numClasses).Take(numFeatures).Select(w => w.ToString("0.000"))));
                     }
                 }
 
