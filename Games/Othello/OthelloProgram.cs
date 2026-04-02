@@ -17,6 +17,7 @@ namespace Othello {
             var options = new (string Name, Action<string[]> Action)[] {
                 ("Training (self-play loop)", TrainingMain),
                 ("Benchmark (vs Adversary)", BenchmarkMain),
+                ("Check playbook integrity", CheckPlaybookIntegrityMain),
                 ("Solve playbook leaves", SolvePlaybookLeavesMain),
                 ("Repair SolvedScores", RepairSolvedScoresMain),
                 ("Run tests", TestMain),
@@ -68,6 +69,21 @@ namespace Othello {
 
         static void TestMain(string[] args) {
             RunTests();
+
+            Console.WriteLine("Press Enter to exit.");
+            Console.ReadLine();
+        }
+
+        static void CheckPlaybookIntegrityMain(string[] args) {
+            if (OthelloNode.PlaybookCount <= 1) {
+                OthelloNode.ReadPlaybook(PlaybookPath);
+            } else {
+                Console.WriteLine("Playbook already loaded with {0} entries, skipping load.", OthelloNode.PlaybookCount);
+            }
+            OthelloNode.PrintPlaybookStats();
+
+            bool result = OthelloNode.Playbook.Check(verbose: true);
+            Console.WriteLine("Playbook integrity check: {0}", result ? "PASSED" : "FAILED");
 
             Console.WriteLine("Press Enter to exit.");
             Console.ReadLine();

@@ -638,88 +638,259 @@ namespace Othello {
 
         #region Test Methods
 
+        private const int MaxPrintedFailures = 5;
+
         /// <summary>
-        /// Check cache coherency.
+        /// Check score cache coherency by verifying that cached scores are consistent
+        /// with SolvedScore and negamax over children.
         /// </summary>
-        /// <param name="verbose"></param>
-        /// <returns>True if the playbook is in a good state.</returns>
-        private bool CheckCache(bool verbose) {
+        private int CheckScoreCache(bool verbose) {
+            var visited = new HashSet<Entry>();
             var toCheck = new Queue<Entry>();
-            int checked_ = 0;
             int failed = 0;
 
             toCheck.Enqueue(this.Root);
+            visited.Add(this.Root);
             while (toCheck.Count > 0) {
                 Entry entry = toCheck.Dequeue();
-                checked_++;
 
-                string reason = entry.CheckCacheVerbose();
+                string reason = entry.CheckScoreCacheVerbose();
                 if (reason != null) {
                     failed++;
-                    if (verbose) {
-                        Console.WriteLine(
-                            "CheckCache FAIL: {0} pieces, solvedScore={1}, children={2}, pass={3}: {4}",
-                            entry.State.OccupiedSquareCount,
-                            entry.SolvedScore,
-                            entry.Children.Count,
-                            entry.State.Pass,
-                            reason);
-                        foreach (Entry child in entry.Children) {
-                            Console.WriteLine(
-                                "  child: {0} pieces, pass={1}, parents={2}, parentContainsSelf={3}",
-                                child.State.OccupiedSquareCount,
-                                child.State.Pass,
-                                child.Parents.Count,
-                                child.Parents.Contains(entry));
-                        }
-                    }
-                    if (failed >= 10) {
-                        Console.WriteLine("... suppressing further failures");
-                        return false;
+                    if (verbose && failed <= MaxPrintedFailures) {
+                        Console.WriteLine("CheckScoreCache FAIL: {0}", reason);
+                        entry.PrintDiagnostic();
                     }
                 }
 
                 foreach (Entry child in entry.Children) {
-                    toCheck.Enqueue(child);
+                    if (visited.Add(child)) {
+                        toCheck.Enqueue(child);
+                    }
                 }
             }
 
-            if (verbose) {
-                Console.WriteLine("CheckCache: {0} entries checked, {1} failed", checked_, failed);
+            return failed;
+        }
+
+        /// <summary>
+        /// Check that parent-child links are symmetric: if A has B as a child,
+        /// B must have A as a parent, and vice versa.
+        /// </summary>
+        private int CheckParentChildSymmetry(bool verbose) {
+            int failed = 0;
+
+            foreach (Entry entry in this.entries.Values) {
+                foreach (Entry child in entry.Children) {
+                    if (!child.Parents.Contains(entry)) {
+                        failed++;
+                        if (verbose && failed <= MaxPrintedFailures) {
+                            Console.WriteLine(
+                                "CheckParentChildSymmetry FAIL: child does not list entry as parent");
+                            Console.WriteLine("--- Entry ---");
+                            entry.PrintDiagnostic();
+                            Console.WriteLine("--- Child ---");
+                            child.PrintDiagnostic();
+                        }
+                    }
+                }
+
+                foreach (Entry parent in entry.Parents) {
+                    if (!parent.Children.Contains(entry)) {
+                        failed++;
+                        if (verbose && failed <= MaxPrintedFailures) {
+                            Console.WriteLine(
+                                "CheckParentChildSymmetry FAIL: parent does not list entry as child");
+                            Console.WriteLine("--- Entry ---");
+                            entry.PrintDiagnostic();
+                            Console.WriteLine("--- Parent ---");
+                            parent.PrintDiagnostic();
+                        }
+                    }
+                }
             }
 
-            return failed == 0;
+            return failed;
+        }
+
+        /// <summary>
+        /// Detect entries where different Pass states may have been conflated due
+        /// to OthelloNode.Equals ignoring the Pass field. Checks two conditions:
+        /// 1. A pass entry whose parent doesn't actually produce a pass child
+        ///    (indicates the pass entry was found via Equals when a non-pass lookup
+        ///    should have created a separate entry).
+        /// 2. A non-pass entry whose parent only produces a pass child (the reverse:
+        ///    a pass lookup found an existing non-pass entry).
+        /// </summary>
+        private int CheckPassConflation(bool verbose) {
+            int failed = 0;
+
+            foreach (Entry entry in this.entries.Values) {
+                foreach (Entry parent in entry.Parents) {
+                    List<OthelloNode> legalChildren = parent.State.GetChildren();
+                    bool parentProducesPass = legalChildren.Count == 1 && legalChildren[0].Pass;
+
+                    if (entry.State.Pass && !parentProducesPass) {
+                        failed++;
+                        if (verbose && failed <= MaxPrintedFailures) {
+                            Console.WriteLine(
+                                "CheckPassConflation FAIL: pass entry ({0} pieces, turn={1}) " +
+                                "has parent ({2} pieces, pass={3}, turn={4}) which does not produce a pass child",
+                                entry.State.OccupiedSquareCount,
+                                entry.State.Turn == OthelloNode.BLACK ? "Black" : "White",
+                                parent.State.OccupiedSquareCount, parent.State.Pass,
+                                parent.State.Turn == OthelloNode.BLACK ? "Black" : "White");
+                            entry.PrintDiagnostic();
+                        }
+                    } else if (!entry.State.Pass && parentProducesPass) {
+                        failed++;
+                        if (verbose && failed <= MaxPrintedFailures) {
+                            Console.WriteLine(
+                                "CheckPassConflation FAIL: non-pass entry ({0} pieces, turn={1}) " +
+                                "has parent ({2} pieces, pass={3}, turn={4}) which only produces a pass child",
+                                entry.State.OccupiedSquareCount,
+                                entry.State.Turn == OthelloNode.BLACK ? "Black" : "White",
+                                parent.State.OccupiedSquareCount, parent.State.Pass,
+                                parent.State.Turn == OthelloNode.BLACK ? "Black" : "White");
+                            entry.PrintDiagnostic();
+                        }
+                    }
+                }
+            }
+
+            return failed;
+        }
+
+        /// <summary>
+        /// Check that every entry is keyed correctly in the dictionary: the
+        /// canonical form of entry.State must map back to the same entry.
+        /// Also checks that the entry's State is isomorphic to its canonical
+        /// form (i.e. they represent the same board up to symmetry).
+        /// </summary>
+        private int CheckCanonicalForm(bool verbose) {
+            int failed = 0;
+
+            foreach (var kvp in this.entries) {
+                OthelloNode key = kvp.Key;
+                Entry entry = kvp.Value;
+                OthelloNode canonical = OthelloNode.Canonicalize(entry.State);
+
+                // The dictionary key must equal the canonical form of the entry's state.
+                if (!key.Equals(canonical) || key.Pass != canonical.Pass) {
+                    failed++;
+                    if (verbose && failed <= MaxPrintedFailures) {
+                        Console.WriteLine(
+                            "CheckCanonicalForm FAIL: dictionary key does not match Canonicalize(entry.State)");
+                        entry.PrintDiagnostic();
+                    }
+                }
+            }
+
+            return failed;
+        }
+
+        /// <summary>
+        /// Check that no two entries are isomorphic (same board up to symmetry).
+        /// The dictionary keys on canonical state via Equals, but since Equals
+        /// ignores Pass, two entries differing only in Pass could coexist. This
+        /// check catches that and any other source of duplicate entries.
+        /// </summary>
+        private int CheckDuplicates(bool verbose) {
+            int failed = 0;
+
+            // Build a lookup keyed on (canonical board, pass) to detect entries
+            // that are Equals-equal but differ in Pass.
+            var seen = new Dictionary<OthelloNode, List<Entry>>();
+            foreach (Entry entry in this.entries.Values) {
+                OthelloNode canonical = OthelloNode.Canonicalize(entry.State);
+                if (!seen.TryGetValue(canonical, out List<Entry> list)) {
+                    list = new List<Entry>(1);
+                    seen[canonical] = list;
+                }
+                list.Add(entry);
+            }
+
+            foreach (var kvp in seen) {
+                List<Entry> list = kvp.Value;
+                if (list.Count <= 1) continue;
+
+                for (int i = 0; i < list.Count; i++) {
+                    for (int j = i + 1; j < list.Count; j++) {
+                        bool sameByEquals = list[i].State.Equals(list[j].State);
+                        bool passDiffers = list[i].State.Pass != list[j].State.Pass;
+                        failed++;
+                        if (verbose && failed <= MaxPrintedFailures) {
+                            Console.WriteLine(
+                                "CheckDuplicates FAIL: {0} entries share canonical state ({1} pieces). " +
+                                "Equals={2}, PassDiffers={3}",
+                                list.Count, list[0].State.OccupiedSquareCount,
+                                sameByEquals, passDiffers);
+                            Console.WriteLine("--- Entry A (pass={0}) ---", list[i].State.Pass);
+                            list[i].PrintDiagnostic();
+                            Console.WriteLine("--- Entry B (pass={0}) ---", list[j].State.Pass);
+                            list[j].PrintDiagnostic();
+                        }
+                    }
+                }
+            }
+
+            return failed;
+        }
+
+        /// <summary>
+        /// Check that legal children present in the playbook are linked as children
+        /// of their parent entry. Detects missing child links where a position's
+        /// legal move leads to a board that exists in the playbook but isn't connected.
+        /// </summary>
+        private int CheckMissingChildLinks(bool verbose) {
+            int failed = 0;
+
+            foreach (Entry entry in this.entries.Values) {
+                if (entry.State.IsGameOver) continue;
+
+                List<OthelloNode> legalChildren = entry.State.GetChildren();
+                foreach (OthelloNode child in legalChildren) {
+                    if (this.TryGetEntry(child, out Entry childEntry) &&
+                        !entry.Children.Contains(childEntry)) {
+                        failed++;
+                        if (verbose && failed <= MaxPrintedFailures) {
+                            Console.WriteLine(
+                                "CheckMissingChildLinks FAIL: legal child exists in playbook but is not linked");
+                            Console.WriteLine("--- Parent ---");
+                            entry.PrintDiagnostic();
+                            Console.WriteLine("--- Unlinked child ---");
+                            childEntry.PrintDiagnostic();
+                        }
+                    }
+                }
+            }
+
+            return failed;
         }
 
         /// <summary>
         /// Check for orphan subtrees.
         /// </summary>
-        /// <param name="verbose"></param>
-        /// <returns>True if the playbook is in a good state.</returns>
-        private bool CheckTree(bool verbose) {
+        private int CheckTree(bool verbose) {
             if (this.Root == null) {
-                return false;
+                return 1;
             }
 
-            return true; // TODO
+            return 0; // TODO
         }
 
         /// <summary>
         /// Check for tree nodes that aren't present in the entry set.
         /// </summary>
-        /// <param name="verbose"></param>
-        /// <returns>True if the playbook is in a good state.</returns>
-        private bool CheckEntries(bool verbose) {
-            return true; // TODO
+        private int CheckEntries(bool verbose) {
+            return 0; // TODO
         }
 
         /// <summary>
         /// Check for a 1-1 mapping between entries and entriesByGameStage.
         /// </summary>
-        /// <param name="verbose"></param>
-        /// <returns>True if the playbook is in a good state.</returns>
-        private bool CheckGameStageEntries(bool verbose) {
-            return true; // TODO
+        private int CheckGameStageEntries(bool verbose) {
+            return 0; // TODO
         }
 
         /// <summary>
@@ -728,10 +899,30 @@ namespace Othello {
         /// <param name="verbose"></param>
         /// <returns>True if the playbook is in a good state.</returns>
         public bool Check(bool verbose = false) {
-            return this.CheckTree(verbose) &&
-                this.CheckEntries(verbose) &&
-                this.CheckGameStageEntries(verbose) &&
-                this.CheckCache(verbose);
+            var results = new (string Name, int Failures)[] {
+                ("Tree structure", this.CheckTree(verbose)),
+                ("Entry set", this.CheckEntries(verbose)),
+                ("Game stage index", this.CheckGameStageEntries(verbose)),
+                ("Canonical form", this.CheckCanonicalForm(verbose)),
+                ("Duplicates", this.CheckDuplicates(verbose)),
+                ("Parent-child symmetry", this.CheckParentChildSymmetry(verbose)),
+                ("Pass conflation", this.CheckPassConflation(verbose)),
+                ("Missing child links", this.CheckMissingChildLinks(verbose)),
+                ("Score cache coherency", this.CheckScoreCache(verbose)),
+            };
+
+            Console.WriteLine();
+            Console.WriteLine("Integrity check results:");
+            int totalFailures = 0;
+            foreach (var (name, failures) in results) {
+                Console.WriteLine("  {0,-25} {1}",
+                    name,
+                    failures == 0 ? "PASSED" : string.Format("FAILED ({0:n0})", failures));
+                totalFailures += failures;
+            }
+            Console.WriteLine("  {0,-25} {1:n0}", "Total failures", totalFailures);
+
+            return totalFailures == 0;
         }
 
         #endregion
@@ -876,22 +1067,53 @@ namespace Othello {
             /// Prints board state, parents, and children with their SolvedScores for debugging.
             /// </summary>
             internal void PrintDiagnostic() {
-                Console.WriteLine("Board ({0} pieces, turn={1}, pass={2}, gameOver={3}):",
+                const int boardWidth = 15; // "X . X . X . X ." = 8 chars + 7 spaces
+                const int groupSize = 6;
+
+                // Print parents in groups.
+                if (this.Parents.Count > 0) {
+                    Console.WriteLine("Parents ({0}):", this.Parents.Count);
+                    PrintEntryGroup(boardWidth, groupSize, [.. this.Parents]);
+                }
+
+                // Print current node.
+                Console.WriteLine("Entry ({0} pieces, gameOver={1}):",
                     this.State.OccupiedSquareCount,
-                    this.State.Turn == OthelloNode.BLACK ? "Black" : "White",
-                    this.State.Pass,
                     this.State.IsGameOver);
-                Console.WriteLine(this.State);
-                Console.WriteLine("Parents ({0}):", this.Parents.Count);
-                foreach (Entry parent in this.Parents) {
-                    Console.WriteLine("  {0} pieces, solvedScore={1}, pass={2}",
-                        parent.State.OccupiedSquareCount, parent.SolvedScore, parent.State.Pass);
+                Console.Write(OthelloNode.PrintNodes(1, true, this.State));
+                PrintSolvedScoreRow(boardWidth, this);
+
+                // Print children in groups.
+                if (this.Children.Count > 0) {
+                    Console.WriteLine("Children ({0}):", this.Children.Count);
+                    PrintEntryGroup(boardWidth, groupSize, [.. this.Children]);
                 }
-                Console.WriteLine("Children ({0}):", this.Children.Count);
-                foreach (Entry child in this.Children) {
-                    Console.WriteLine("  {0} pieces, solvedScore={1}, pass={2}",
-                        child.State.OccupiedSquareCount, child.SolvedScore, child.State.Pass);
+            }
+
+            private static void PrintEntryGroup(int boardWidth, int groupSize, Entry[] entries) {
+                for (int i = 0; i < entries.Length; i += groupSize) {
+                    int count = Math.Min(groupSize, entries.Length - i);
+                    OthelloNode[] nodes = new OthelloNode[count];
+                    Entry[] group = new Entry[count];
+                    for (int j = 0; j < count; j++) {
+                        nodes[j] = entries[i + j].State;
+                        group[j] = entries[i + j];
+                    }
+                    Console.Write(OthelloNode.PrintNodes(groupSize, true, nodes));
+                    PrintSolvedScoreRow(boardWidth, group);
                 }
+            }
+
+            private static void PrintSolvedScoreRow(int boardWidth, params Entry[] entries) {
+                for (int i = 0; i < entries.Length; i++) {
+                    if (i > 0) {
+                        Console.Write(" | ");
+                    }
+                    string label = string.Format("solved={0}",
+                        entries[i].SolvedScore?.ToString() ?? "null");
+                    Console.Write(label.PadRight(boardWidth));
+                }
+                Console.WriteLine();
             }
 
             #region Hashing and Equality
@@ -910,7 +1132,7 @@ namespace Othello {
 
             #region Test Methods
 
-            internal string CheckCacheVerbose() {
+            internal string CheckScoreCacheVerbose() {
                 if (this.score == null) {
                     return null;
                 }
@@ -936,7 +1158,7 @@ namespace Othello {
                     string.Format("score={0} but -min(children)={1}", this.score, -min);
             }
 
-            internal bool CheckCache() {
+            internal bool CheckScoreCache() {
                 if (this.score == null) {
                     return true;
                 }
