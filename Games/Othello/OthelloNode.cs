@@ -1817,6 +1817,17 @@ namespace Othello {
                     writer.WriteLine();
                 }
 
+                // Write pattern class weights
+                writer.WriteLine("PatternClassWeights {0} {1}", PatternClasses.Length, NumGameStages);
+                for (int i = 0; i < PatternClasses.Length; i++) {
+                    WriteComment(writer, "PatternClass {0}", i);
+                    for (int stage = 0; stage < NumGameStages; stage++) {
+                        if (stage > 0) writer.Write(" ");
+                        writer.Write("{0:R}", PatternClassWeights[i, stage]);
+                    }
+                    writer.WriteLine();
+                }
+
                 for (int i = 0; i < PatternClasses.Length; i++) {
                     WriteComment(writer, "PatternClass {0}", i);
                     writer.WriteLine("PatternClass");
@@ -1958,6 +1969,7 @@ namespace Othello {
             DateTime start = DateTime.Now;
 
             StreamReader reader;
+            bool hasPatternClassWeights = false;
             try {
                 if (!File.Exists(path)) {
                     Console.WriteLine("File not found: {0}", path);
@@ -2001,6 +2013,30 @@ namespace Othello {
                     for (int i = Features.Length; i < numFeatures; i++) {
                         NextLine(reader);
                     }
+                    line = null;
+                }
+
+                // Read pattern class weights (optional for backward compatibility)
+                if (line == null) {
+                    line = NextLine(reader);
+                }
+                if (line != null && line.StartsWith("PatternClassWeights")) {
+                    string[] header = line.Split(' ');
+                    int numClasses = int.Parse(header[1]);
+                    int numStages = int.Parse(header[2]);
+                    for (int i = 0; i < numClasses && i < PatternClasses.Length; i++) {
+                        line = NextLine(reader);
+                        CheckEOF(line);
+                        string[] values = line.Split(' ');
+                        for (int stage = 0; stage < numStages && stage < NumGameStages; stage++) {
+                            PatternClassWeights[i, stage] = double.Parse(values[stage]);
+                        }
+                    }
+                    // Skip extra classes if the file has more than we expect
+                    for (int i = PatternClasses.Length; i < numClasses; i++) {
+                        NextLine(reader);
+                    }
+                    hasPatternClassWeights = true;
                     line = null;
                 }
 
@@ -2051,12 +2087,13 @@ namespace Othello {
                 reader.Close();
             }
 
-            // Use uniform weights when loading from disk. The logistic regression in
-            // CalculateWeights requires PatternClassScores to be populated by CalculateHeuristics
-            // first; at load time we only have the deserialized data.
-            for (int i = 0; i < PatternClasses.Length; i++) {
-                for (int stage = 0; stage < NumGameStages; stage++) {
-                    PatternClassWeights[i, stage] = 1.0 / PatternClasses.Length;
+            // Fall back to uniform weights when the file doesn't include PatternClassWeights
+            // (backward compatibility with older param files).
+            if (!hasPatternClassWeights) {
+                for (int i = 0; i < PatternClasses.Length; i++) {
+                    for (int stage = 0; stage < NumGameStages; stage++) {
+                        PatternClassWeights[i, stage] = 1.0 / PatternClasses.Length;
+                    }
                 }
             }
 
