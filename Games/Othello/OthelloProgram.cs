@@ -246,10 +246,8 @@ namespace Othello {
             Player<OthelloNode> p0;
             Player<OthelloNode> p1;
 
-            // TODO: re-enable calling CalculatePatternScore() if this is changed from
-            //       PatternScoreSlow() to PatternScore()
-            // TODO: also, optimize CalculateWeights() and especially CalculatePatternScores()
-            Func<OthelloNode, int> patternEval = node => node.PatternScoreSlow();
+            // TODO: optimize CalculateWeights() and especially CalculatePatternScores()
+            Func<OthelloNode, int> patternEval = node => node.PatternScore();
 
             int randomGamesPlayed = 0;
             int selfGamesPlayed = 0;
@@ -303,18 +301,16 @@ namespace Othello {
         }
 
         /// <summary>
-        /// Benchmark PatternScoreSlow against Adversary (Eval1 at depth) and Adversary+
+        /// Benchmark PatternScore against Adversary (Eval1 at depth) and Adversary+
         /// (Eval1 at depth+1). Alternates black/white for fairness and tracks per-color stats.
         /// </summary>
         static void BenchmarkMain(string[] args) {
             const int games = 100;
             const int depth = 5;
 
-            OthelloNode.ReadPlaybook(PlaybookPath);
             OthelloNode.ReadHeuristics(ParamsPath);
-            OthelloNode.CalculateHeuristics();
 
-            Func<OthelloNode, int> patternEval = node => node.PatternScoreSlow();
+            Func<OthelloNode, int> patternEval = node => node.PatternScore();
 
             var trials = new (string Name, Func<OthelloNode, int> Eval, int Depth)[] {
                 ("Adversary (Eval1, depth " + depth + ")", OthelloNode.Eval1, depth),
@@ -327,7 +323,7 @@ namespace Othello {
             foreach (var (name, eval, oppDepth) in trials) {
                 Console.WriteLine();
                 Console.WriteLine("========================================");
-                Console.WriteLine("  Player 1 (PatternScoreSlow, depth {0}) vs {1}", depth, name);
+                Console.WriteLine("  Player 1 (PatternScore, depth {0}) vs {1}", depth, name);
                 Console.WriteLine("========================================");
 
                 int wins = 0, losses = 0, draws = 0, totalScore = 0;
@@ -369,7 +365,7 @@ namespace Othello {
             // Print comparison.
             Console.WriteLine();
             Console.WriteLine("========================================");
-            Console.WriteLine("  Results: Player 1 (PatternScoreSlow, depth {0})", depth);
+            Console.WriteLine("  Results: Player 1 (PatternScore, depth {0})", depth);
             Console.WriteLine("  ({0} games each, alternating black/white)", games);
             Console.WriteLine("========================================");
             Console.WriteLine();

@@ -381,14 +381,16 @@ namespace Othello {
             }
 
             // Recalculate the pattern scores to incorporate the new weights.
-            CalculatePatternScores();
+            CalculatePatternScores(verbose: false);
         }
 
-        private static void CalculatePatternScores() {
-            // TODO: temporarily unused
-        }
+        private static void CalculatePatternScores(bool verbose) {
+            DateTime start = DateTime.Now;
+            if (verbose) {
+                Console.Write("Calculating pattern scores ({0} patterns)... ", Patterns.Length);
+            }
 
-        private static void _CalculatePatternScores() {
+            long totalEntries = 0;
             for (int i = 0; i < Patterns.Length; i++) {
                 int patternClass = PatternClassIndices[i];
                 Dictionary<PatternClassKey, HeuristicData> source = PatternClassScores[patternClass];
@@ -404,9 +406,15 @@ namespace Othello {
                     data.Score = (int)Math.Round(data.CalculateScore() * weight);
                     dest[new PatternClassKey(kvp.Key.PieceCount, transform(kvp.Key.Self), transform(kvp.Key.Other))] = data;
                 }
+                totalEntries += dest.Count;
             }
 
             GC.Collect();
+
+            if (verbose) {
+                Console.WriteLine("done ({0:n0} entries). Time elapsed = {1:0.000} seconds.",
+                    totalEntries, (DateTime.Now - start).TotalSeconds);
+            }
         }
 
         #endregion
@@ -1272,7 +1280,8 @@ namespace Othello {
             ulong self = this.PlayerBoard;
             ulong other = this.OtherBoard;
             int pieceCount = this.OccupiedSquareCount;
-            int result = 0;
+            int stage = GameStage(pieceCount);
+            double result = 0.0;
 
             for (int i = 0; i < Patterns.Length; i++) {
                 ulong mask = Patterns[i];
@@ -1282,7 +1291,12 @@ namespace Othello {
                 }
             }
 
-            return result;
+            // Add numeric feature contributions: Σ β_i × feature_i
+            for (int i = 0; i < Features.Length; i++) {
+                result += Features[i](this) * FeatureCoefficients[i, stage];
+            }
+
+            return (int)Math.Round(result);
         }
 
         // While slightly slower than PatternScore(), this evaluation function has the
@@ -1503,7 +1517,7 @@ namespace Othello {
                     }
                 }
 
-                CalculatePatternScores();
+                CalculatePatternScores(verbose);
 
                 if (verbose) {
                     Console.WriteLine("done (no playbook, uniform weights). Time elapsed = {0:0.000} seconds.",
@@ -1709,7 +1723,7 @@ namespace Othello {
             InterpolateUntrainedStages(stageTrained);
 
             // Recalculate the pattern scores to incorporate the new weights.
-            CalculatePatternScores();
+            CalculatePatternScores(verbose);
 
             TimeSpan elapsed = DateTime.Now - start;
             if (verbose) {
@@ -2097,7 +2111,7 @@ namespace Othello {
                 }
             }
 
-            CalculatePatternScores();
+            CalculatePatternScores(verbose: true);
 
             TimeSpan elapsed = DateTime.Now - start;
             Console.WriteLine("done. maxCount = {0:n0}. Time elapsed = {1:0.000} seconds.", HeuristicDataMaxCount, elapsed.TotalSeconds);
