@@ -243,53 +243,84 @@
                     Grid.Column="1"
                     Grid.RowSpan="3"
                     Margin="0,5">
-            <TextBlock HorizontalAlignment="Center">
-                AI Options
-            </TextBlock>
 
-            <CheckBox IsChecked="{Binding Randomness}">
+            <!-- Black Player Settings -->
+            <TextBlock HorizontalAlignment="Center" FontWeight="Bold">
+                Black Player
+            </TextBlock>
+            <ComboBox ItemsSource="{Binding PlayerTypes}"
+                      SelectedItem="{Binding BlackPlayerType}"
+                      Margin="5" />
+            <CheckBox IsChecked="{Binding BlackRandomness}" IsEnabled="{Binding BlackIsSearchPlayer}">
                 Randomness
             </CheckBox>
-            <CheckBox IsChecked="{Binding Training}">
-                Training (Write to playbook)
-            </CheckBox>
-            <CheckBox IsChecked="{Binding Memo}">
-                Memoize (Use playbook)
+            <CheckBox IsChecked="{Binding BlackMemo}" IsEnabled="{Binding BlackIsAI}">
+                Memoize
             </CheckBox>
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
-
-                <TextBlock Grid.Column="0">
-                    Search Depth:
-                </TextBlock>
+                <TextBlock Grid.Column="0">Search Depth:</TextBlock>
                 <TextBlock Grid.Column="1"
                            HorizontalAlignment="Right"
-                           Text="{Binding SearchDepth}" />
+                           Text="{Binding BlackSearchDepth}" />
             </Grid>
-            <Slider x:Name="SearchDepthSlider"
+            <Slider x:Name="BlackSearchDepthSlider"
                     Minimum="1"
                     Maximum="10"
                     TickFrequency="1"
                     IsSnapToTickEnabled="True"
-                    Value="{Binding SearchDepth}" />
+                    IsEnabled="{Binding BlackIsSearchPlayer}"
+                    Value="{Binding BlackSearchDepth}" />
 
             <Border Height="1" Background="Gray" Margin="5" />
 
-            <TextBlock HorizontalAlignment="Center">
-                Player Options
-            </TextBlock>
+            <!-- Swap Button -->
+            <Button HorizontalAlignment="Center"
+                    Click="SwapButton_Click">
+                Swap Players
+            </Button>
 
-            <CheckBox IsChecked="{Binding HumanBlack}">
-                Black is Human
+            <Border Height="1" Background="Gray" Margin="5" />
+
+            <!-- White Player Settings -->
+            <TextBlock HorizontalAlignment="Center" FontWeight="Bold">
+                White Player
+            </TextBlock>
+            <ComboBox ItemsSource="{Binding PlayerTypes}"
+                      SelectedItem="{Binding WhitePlayerType}"
+                      Margin="5" />
+            <CheckBox IsChecked="{Binding WhiteRandomness}" IsEnabled="{Binding WhiteIsSearchPlayer}">
+                Randomness
             </CheckBox>
-            <CheckBox IsChecked="{Binding HumanWhite}">
-                White is Human
+            <CheckBox IsChecked="{Binding WhiteMemo}" IsEnabled="{Binding WhiteIsAI}">
+                Memoize
             </CheckBox>
-            <CheckBox IsChecked="{Binding AiSwap}">
-                Swap AIs
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0">Search Depth:</TextBlock>
+                <TextBlock Grid.Column="1"
+                           HorizontalAlignment="Right"
+                           Text="{Binding WhiteSearchDepth}" />
+            </Grid>
+            <Slider x:Name="WhiteSearchDepthSlider"
+                    Minimum="1"
+                    Maximum="10"
+                    TickFrequency="1"
+                    IsSnapToTickEnabled="True"
+                    IsEnabled="{Binding WhiteIsSearchPlayer}"
+                    Value="{Binding WhiteSearchDepth}" />
+
+            <Border Height="1" Background="Gray" Margin="5" />
+
+            <!-- Global Options -->
+            <CheckBox IsChecked="{Binding Training}">
+                Training (Write to playbook)
             </CheckBox>
 
             <Border Height="1" Background="Gray" Margin="5" />

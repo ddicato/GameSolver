@@ -14,6 +14,15 @@ using Solver;
 using Othello;
 
 namespace OthelloAvalonia {
+    public enum PlayerType {
+        Human,
+        Random,
+        Pattern,
+        PatternSlow,
+        Eval0,
+        Eval1,
+    }
+
     public partial class OthelloWindow : Window, Player<OthelloNode>, INotifyPropertyChanged {
         private static IBrush EmptyPieceBrush = new SolidColorBrush(Colors.Transparent);
         private static IBrush BlackPieceBrush = new SolidColorBrush(Colors.Black);
@@ -45,7 +54,8 @@ namespace OthelloAvalonia {
         public OthelloWindow() {
             InitializeComponent();
 
-            this.SearchDepth = (int)this.SearchDepthSlider.Minimum;
+            this.BlackSearchDepth = (int)this.BlackSearchDepthSlider.Minimum;
+            this.WhiteSearchDepth = (int)this.WhiteSearchDepthSlider.Minimum;
 
             for (int j = 0; j < 8; j++) {
                 for (int i = 0; i < 8; i++) {
@@ -69,57 +79,70 @@ namespace OthelloAvalonia {
 
         #region Bindable Properties
 
-        private bool _randomness;
-        public bool Randomness {
-            get => _randomness;
-            set { _randomness = value; OnPropertyChanged(nameof(Randomness)); }
+        public static PlayerType[] PlayerTypes => (PlayerType[])Enum.GetValues(typeof(PlayerType));
+
+        // Black player settings
+        private PlayerType _blackPlayerType = PlayerType.Pattern;
+        public PlayerType BlackPlayerType {
+            get => _blackPlayerType;
+            set { _blackPlayerType = value; OnPropertyChanged(nameof(BlackPlayerType)); OnPropertyChanged(nameof(BlackIsAI)); OnPropertyChanged(nameof(BlackIsSearchPlayer)); }
+        }
+        public bool BlackIsAI => _blackPlayerType != PlayerType.Human;
+        public bool BlackIsSearchPlayer => _blackPlayerType != PlayerType.Human && _blackPlayerType != PlayerType.Random;
+
+        private bool _blackRandomness;
+        public bool BlackRandomness {
+            get => _blackRandomness;
+            set { _blackRandomness = value; OnPropertyChanged(nameof(BlackRandomness)); }
         }
 
-        private bool _training;
+        private bool _blackMemo;
+        public bool BlackMemo {
+            get => _blackMemo;
+            set { _blackMemo = value; OnPropertyChanged(nameof(BlackMemo)); }
+        }
+
+        private int _blackSearchDepth;
+        public int BlackSearchDepth {
+            get => _blackSearchDepth;
+            set { _blackSearchDepth = value; OnPropertyChanged(nameof(BlackSearchDepth)); }
+        }
+
+        // White player settings
+        private PlayerType _whitePlayerType = PlayerType.Pattern;
+        public PlayerType WhitePlayerType {
+            get => _whitePlayerType;
+            set { _whitePlayerType = value; OnPropertyChanged(nameof(WhitePlayerType)); OnPropertyChanged(nameof(WhiteIsAI)); OnPropertyChanged(nameof(WhiteIsSearchPlayer)); }
+        }
+        public bool WhiteIsAI => _whitePlayerType != PlayerType.Human;
+        public bool WhiteIsSearchPlayer => _whitePlayerType != PlayerType.Human && _whitePlayerType != PlayerType.Random;
+
+        private bool _whiteRandomness;
+        public bool WhiteRandomness {
+            get => _whiteRandomness;
+            set { _whiteRandomness = value; OnPropertyChanged(nameof(WhiteRandomness)); }
+        }
+
+        private bool _whiteMemo;
+        public bool WhiteMemo {
+            get => _whiteMemo;
+            set { _whiteMemo = value; OnPropertyChanged(nameof(WhiteMemo)); }
+        }
+
+        private int _whiteSearchDepth;
+        public int WhiteSearchDepth {
+            get => _whiteSearchDepth;
+            set { _whiteSearchDepth = value; OnPropertyChanged(nameof(WhiteSearchDepth)); }
+        }
+
+        // Global settings
+        private bool _training = true;
         public bool Training {
             get => _training;
             set { _training = value; OnPropertyChanged(nameof(Training)); }
         }
 
-        private int _searchDepth;
-        public int SearchDepth {
-            get => _searchDepth;
-            set { _searchDepth = value; OnPropertyChanged(nameof(SearchDepth)); }
-        }
-
-        private bool _humanBlack;
-        public bool HumanBlack {
-            get => _humanBlack;
-            set { _humanBlack = value; OnPropertyChanged(nameof(HumanBlack)); }
-        }
-
-        private bool _humanWhite;
-        public bool HumanWhite {
-            get => _humanWhite;
-            set { _humanWhite = value; OnPropertyChanged(nameof(HumanWhite)); }
-        }
-
-        private bool _aiSwap;
-        public bool AiSwap {
-            get => _aiSwap;
-            set { _aiSwap = value; OnPropertyChanged(nameof(AiSwap)); }
-        }
-
-        private bool _memo;
-        public bool Memo {
-            get => _memo;
-            set { _memo = value; OnPropertyChanged(nameof(Memo)); }
-        }
-
         #endregion
-
-        private static int Eval0(OthelloNode node) {
-            return 2 * node.PotentialMobilitySpread() - node.FrontierSpread() + 8 * node.CornerSpread();
-        }
-
-        private static int Eval1(OthelloNode node) {
-            return 2 * node.PotentialMobilitySpread() - node.FrontierSpread() + 8 * node.CornerSpread();
-        }
 
         private void InitGame() {
             this.AbortComputation();
@@ -138,33 +161,40 @@ namespace OthelloAvalonia {
             }
         }
 
-        private void InitPlayers() {
+        private static Func<OthelloNode, int> GetEvaluator(PlayerType type) {
+            return type switch {
+                PlayerType.Pattern => node => node.PatternScore(),
+                PlayerType.PatternSlow => node => node.PatternScoreSlow(),
+                PlayerType.Eval0 => OthelloNode.Eval0,
+                PlayerType.Eval1 => OthelloNode.Eval1,
+                _ => throw new InvalidOperationException($"No evaluator for {type}"),
+            };
+        }
+
+        private Player<OthelloNode> CreatePlayer(PlayerType type, int depth, bool randomness, bool memo) {
+            if (type == PlayerType.Human) return null;
+
             const bool verbose = true;
 
-            Player<OthelloNode> black =
-                new MtdFPlayer(this.SearchDepth, node => node.PatternScoreSlow(), verbose: verbose, solveEndgame: true, randomness: this.Randomness);
-            Player<OthelloNode> white =
-                new MtdFPlayer(this.SearchDepth + 1, OthelloNode.Eval1, verbose: verbose, solveEndgame: true, randomness: this.Randomness);
-
-            if (this.AiSwap) {
-                this.blackPlayer = white;
-                this.whitePlayer = black;
-            } else {
-                this.blackPlayer = black;
-                this.whitePlayer = white;
+            if (type == PlayerType.Random) {
+                Player<OthelloNode> rp = new RandomPlayer { Verbose = verbose };
+                if (memo) {
+                    rp = new MemoPlayer(OthelloNode.Playbook, rp) { Verbose = verbose };
+                }
+                return rp;
             }
 
-            if (this.Memo) {
-                this.blackPlayer = new MemoPlayer(OthelloNode.Playbook, this.blackPlayer) { Verbose = verbose };
-                this.whitePlayer = new MemoPlayer(OthelloNode.Playbook, this.whitePlayer) { Verbose = verbose };
+            Player<OthelloNode> player =
+                new MtdFPlayer(depth, GetEvaluator(type), verbose: verbose, solveEndgame: true, randomness: randomness);
+            if (memo) {
+                player = new MemoPlayer(OthelloNode.Playbook, player) { Verbose = verbose };
             }
+            return player;
+        }
 
-            if (this.HumanBlack) {
-                this.blackPlayer = null;
-            }
-            if (this.HumanWhite) {
-                this.whitePlayer = null;
-            }
+        private void InitPlayers() {
+            this.blackPlayer = CreatePlayer(this.BlackPlayerType, this.BlackSearchDepth, this.BlackRandomness, this.BlackMemo);
+            this.whitePlayer = CreatePlayer(this.WhitePlayerType, this.WhiteSearchDepth, this.WhiteRandomness, this.WhiteMemo);
         }
 
         private void GameLoop(CancellationToken ct) {
@@ -237,6 +267,13 @@ namespace OthelloAvalonia {
 
             Console.WriteLine("done.");
             Console.WriteLine();
+        }
+
+        private void SwapButton_Click(object sender, RoutedEventArgs e) {
+            (BlackPlayerType, WhitePlayerType) = (WhitePlayerType, BlackPlayerType);
+            (BlackRandomness, WhiteRandomness) = (WhiteRandomness, BlackRandomness);
+            (BlackMemo, WhiteMemo) = (WhiteMemo, BlackMemo);
+            (BlackSearchDepth, WhiteSearchDepth) = (WhiteSearchDepth, BlackSearchDepth);
         }
 
         private static bool TryGetCoordinates(object sender, out int column, out int row) {
