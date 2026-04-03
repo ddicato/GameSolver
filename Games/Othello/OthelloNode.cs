@@ -1402,6 +1402,12 @@ namespace Othello {
         }
 
         public static void CalculateHeuristics() {
+            // Capture current weights before clearing so CalculateWeights can warm-start
+            // from them. If ReadHeuristics was called first, these are the file-loaded values;
+            // otherwise they're the defaults from the previous run or InitializeWeights.
+            var savedWeights = (double[,])PatternClassWeights.Clone();
+            var savedFeatureCoefficients = (double[,])FeatureCoefficients.Clone();
+
             DateTime start = DateTime.Now;
             ClearHeuristics();
 
@@ -1441,7 +1447,7 @@ namespace Othello {
             TimeSpan elapsed = DateTime.Now - start;
             Console.WriteLine("done. Time elapsed = {0:0.000} seconds.", elapsed.TotalSeconds);
 
-            CalculateWeights();
+            CalculateWeights(warmStartWeights: savedWeights, warmStartFeatures: savedFeatureCoefficients);
         }
 
         private class TrainAccumulator {
@@ -1492,7 +1498,7 @@ namespace Othello {
             }
         }
 
-        public static void CalculateWeights(bool verbose = true) {
+        public static void CalculateWeights(bool verbose = true, double[,] warmStartWeights = null, double[,] warmStartFeatures = null) {
             var entries = Playbook?.ToList();
 
             DateTime start = DateTime.Now;
@@ -1617,9 +1623,17 @@ namespace Othello {
                     continue;
                 }
 
-                // Warm-start from next trained stage's weights for faster convergence
+                // Warm-start: prefer per-stage weights from the previous run (file-loaded or
+                // last iteration), falling back to the next trained stage when unavailable.
                 double[] weights = new double[numParams];
-                if (stage < NumGameStages - 1 && stageTrained[stage + 1]) {
+                if (warmStartWeights != null) {
+                    for (int i = 0; i < numClasses; i++) {
+                        weights[i] = warmStartWeights[i, stage];
+                    }
+                    for (int i = 0; i < numFeatures; i++) {
+                        weights[numClasses + i] = warmStartFeatures[i, stage];
+                    }
+                } else if (stage < NumGameStages - 1 && stageTrained[stage + 1]) {
                     for (int i = 0; i < numClasses; i++) {
                         weights[i] = PatternClassWeights[i, stage + 1];
                     }
