@@ -2,7 +2,6 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -318,79 +317,96 @@ namespace Othello {
 
         /// <summary>
         /// Benchmark PatternScore against Adversary (Eval1 at depth) and Adversary+
-        /// (Eval1 at depth+1). Alternates black/white for fairness and tracks per-color stats.
+        /// (Eval1 at depth+1). Runs twice — once without MemoPlayer and once with — to
+        /// isolate the playbook's contribution. Alternates black/white for fairness.
         /// </summary>
         static void BenchmarkMain(string[] args) {
             const int games = 100;
             const int depth = 5;
 
             OthelloNode.ReadHeuristics(ParamsPath);
-
-            Func<OthelloNode, int> patternEval = node => node.PatternScore();
+            OthelloNode.ReadPlaybook(PlaybookPath);
 
             var trials = new (string Name, Func<OthelloNode, int> Eval, int Depth)[] {
-                ("Adversary (Eval1, depth " + depth + ")", OthelloNode.Eval1, depth),
-                ("Adversary+ (Eval1, depth " + (depth + 1) + ")", OthelloNode.Eval1, depth + 1),
+                ("Adversary (Eval1, d" + depth + ")", OthelloNode.Eval1, depth),
+                ("Adversary+ (Eval1, d" + (depth + 1) + ")", OthelloNode.Eval1, depth + 1),
             };
 
             var results = new List<(string Label, int Wins, int Losses, int Draws, int TotalScore,
                 int BlackWins, int BlackLosses, int BlackDraws, int WhiteWins, int WhiteLosses, int WhiteDraws)>();
 
-            foreach (var (name, eval, oppDepth) in trials) {
-                Console.WriteLine();
-                Console.WriteLine("========================================");
-                Console.WriteLine("  Player 1 (PatternScore, depth {0}) vs {1}", depth, name);
-                Console.WriteLine("========================================");
+            void RunTrials(string runLabel, bool useMemo) {
+                static int patternEval(OthelloNode node) => node.PatternScore();
+                foreach (var (name, eval, oppDepth) in trials) {
+                    Console.WriteLine();
+                    Console.WriteLine("========================================");
+                    Console.WriteLine("  [{0}] PatternScore (d{1}) vs {2}", runLabel, depth, name);
+                    Console.WriteLine("========================================");
 
-                int wins = 0, losses = 0, draws = 0, totalScore = 0;
-                int bWins = 0, bLosses = 0, bDraws = 0;
-                int wWins = 0, wLosses = 0, wDraws = 0;
+                    int wins = 0, losses = 0, draws = 0, totalScore = 0;
+                    int bWins = 0, bLosses = 0, bDraws = 0;
+                    int wWins = 0, wLosses = 0, wDraws = 0;
 
-                for (int i = 0; i < games; i++) {
-                    Console.Write("Game {0}/{1}: ", i + 1, games);
+                    var gameResults = new int[games];
+                    int completed = 0;
+                    Parallel.For(0, games, new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount }, i => {
+                        Player<OthelloNode> p0 = new MtdFPlayer(depth, patternEval, randomness: true);
+                        var p1 = new MtdFPlayer(oppDepth, eval, randomness: true);
+                        if (useMemo) {
+                            p0 = new MemoPlayer(OthelloNode.Playbook, p0);
+                        }
+                        bool p0IsBlack = (i & 1) == 0;
+                        int result;
+                        if (p0IsBlack) {
+                            result = GameLoop(p0, "PatternScore", p1, name, null, quiet: true);
+                        } else {
+                            result = GameLoop(p1, name, p0, "PatternScore", null, quiet: true);
+                            result = -result;
+                        }
+                        gameResults[i] = result;
+                        int n = Interlocked.Increment(ref completed);
+                        Console.WriteLine("  [{0,3}/{1}] score={2:+0;-0;0} (P1 as {3})",
+                            n, games, result, p0IsBlack ? "black" : "white");
+                    });
 
-                    var p0 = new MtdFPlayer(depth, patternEval, randomness: true);
-                    var p1 = new MtdFPlayer(oppDepth, eval, randomness: true);
+                    for (int i = 0; i < games; i++) {
+                        int result = gameResults[i];
+                        bool p0IsBlack = (i & 1) == 0;
 
-                    int result;
-                    bool p0IsBlack = (i & 1) == 0;
-                    if (p0IsBlack) {
-                        result = GameLoop(p0, "Player 1", p1, name, null);
-                    } else {
-                        result = GameLoop(p1, name, p0, "Player 1", null);
-                        result = -result;
+                        totalScore += result;
+                        if (result > 0) { wins++; if (p0IsBlack) bWins++; else wWins++; }
+                        else if (result < 0) { losses++; if (p0IsBlack) bLosses++; else wLosses++; }
+                        else { draws++; if (p0IsBlack) bDraws++; else wDraws++; }
+
+                        Console.WriteLine(
+                            "Game {0}/{1}: score={2:+0;-0;0} (P1 as {3}) running: {4}W {5}L {6}D avg={7:+0.0;-0.0;0.0}",
+                            i + 1, games, result,
+                            p0IsBlack ? "black" : "white",
+                            wins, losses, draws,
+                            (double)totalScore / (i + 1));
                     }
 
-                    totalScore += result;
-                    if (result > 0) { wins++; if (p0IsBlack) bWins++; else wWins++; }
-                    else if (result < 0) { losses++; if (p0IsBlack) bLosses++; else wLosses++; }
-                    else { draws++; if (p0IsBlack) bDraws++; else wDraws++; }
-
-                    Console.WriteLine(
-                        "  score={0:+0;-0;0} (P1 as {1}) running: {2}W {3}L {4}D avg={5:+0.0;-0.0;0.0}",
-                        result,
-                        p0IsBlack ? "black" : "white",
-                        wins, losses, draws,
-                        (double)totalScore / (i + 1));
+                    results.Add((runLabel + ": " + name, wins, losses, draws, totalScore,
+                        bWins, bLosses, bDraws, wWins, wLosses, wDraws));
                 }
-
-                results.Add((name, wins, losses, draws, totalScore,
-                    bWins, bLosses, bDraws, wWins, wLosses, wDraws));
             }
+
+            RunTrials("No Memo ", false);
+            RunTrials("MemoPlayer", true);
 
             // Print comparison.
             Console.WriteLine();
             Console.WriteLine("========================================");
-            Console.WriteLine("  Results: Player 1 (PatternScore, depth {0})", depth);
+            Console.WriteLine("  Results: PatternScore (depth {0})", depth);
             Console.WriteLine("  ({0} games each, alternating black/white)", games);
             Console.WriteLine("========================================");
             Console.WriteLine();
-            Console.WriteLine("{0,-35} {1,6} {2,6} {3,6} {4,10} {5,10}",
-                "Opponent", "Wins", "Losses", "Draws", "Avg Score", "Win Rate");
-            Console.WriteLine(new string('-', 79));
+            Console.WriteLine("{0,-42} {1,6} {2,6} {3,6} {4,10} {5,10}",
+                "Run: Opponent", "Wins", "Losses", "Draws", "Avg Score", "Win Rate");
+            Console.WriteLine(new string('-', 86));
 
             foreach (var r in results) {
-                Console.WriteLine("{0,-35} {1,6} {2,6} {3,6} {4,10:+0.00;-0.00;0.00} {5,9:0.0}%",
+                Console.WriteLine("{0,-42} {1,6} {2,6} {3,6} {4,10:+0.00;-0.00;0.00} {5,9:0.0}%",
                     r.Label, r.Wins, r.Losses, r.Draws,
                     (double)r.TotalScore / games,
                     100.0 * r.Wins / games);
@@ -550,7 +566,8 @@ namespace Othello {
             string whiteName,
             List<(OthelloNode Node, int? Score)> gameHistory,
             bool verbose = false,
-            TrainingMode training = TrainingMode.All) {
+            TrainingMode training = TrainingMode.All,
+            bool quiet = false) {
             OthelloNode board = new OthelloNode();
             List<OthelloNode> children;
             
@@ -600,7 +617,9 @@ namespace Othello {
                 Console.WriteLine("Final Board:");
                 Console.WriteLine(board);
             }
-            board.PrintScore(blackName, whiteName);
+            if (!quiet) {
+                board.PrintScore(blackName, whiteName);
+            }
 
             return board.Score;
         }
