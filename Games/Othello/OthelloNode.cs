@@ -450,6 +450,8 @@ namespace Othello {
             }
         }
 
+        // TODO: There's one symmetry we don't account for - swapping self with other while swapping turn. We should
+        // probably just canonicalize to a single player and remove turn from the API.
         public static IEnumerable<KeyValuePair<ulong, ulong>> GetSymmetries(ulong selfBoard, ulong otherBoard) {
             for (int i = 0; i < Transforms.Length; i++) {
                 yield return new KeyValuePair<ulong, ulong>(Transforms[i](selfBoard), Transforms[i](otherBoard));
@@ -498,6 +500,7 @@ namespace Othello {
             return result;
         }
 
+        // TODO: There's one more canonical form we don't check for - swapping self with other while swapping turn
         public static OthelloNode Canonicalize(OthelloNode node) {
             BoardSymmetries sym = GetBoardSymmetries(node.PlayerBoard, node.OtherBoard);
             ulong minSelf = node.PlayerBoard, minOther = node.OtherBoard;
@@ -509,6 +512,14 @@ namespace Othello {
                 }
             }
             return new OthelloNode(node.Turn, minSelf, minOther, node.Pass);
+        }
+
+        /// <summary>
+        /// Returns a new node with black and white pieces swapped and the turn flipped.
+        /// The resulting position is strategically equivalent under Othello's color symmetry.
+        /// </summary>
+        public static OthelloNode SwapColors(OthelloNode node) {
+            return new OthelloNode((node.Turn + 1) & 1, node.PlayerBoard, node.OtherBoard, node.Pass);
         }
 
         public static IEnumerable<OthelloNode> GetSymmetries(OthelloNode node) {

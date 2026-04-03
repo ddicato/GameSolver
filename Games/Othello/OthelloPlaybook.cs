@@ -941,6 +941,51 @@ namespace Othello {
         }
 
         /// <summary>
+        /// Tallies entries whose color-swapped form (turn flipped, self/other swapped)
+        /// also exists in the playbook under a different canonical form. These represent
+        /// the same physical board reachable from the other player's perspective.
+        /// Returns count / 2 since each pair is discovered from both sides.
+        /// </summary>
+        private int CheckColorSwapDuplicates(bool verbose) {
+            int found = 0;
+
+            foreach (Entry entry in this.entries.Values) {
+                OthelloNode swapped = OthelloNode.SwapColors(entry.State);
+                OthelloNode swappedCanonical = OthelloNode.Canonicalize(swapped);
+                OthelloNode originalCanonical = OthelloNode.Canonicalize(entry.State);
+
+                // Only count cases where the canonical forms differ (otherwise it's
+                // already handled by geometric symmetry).
+                if (swappedCanonical.Equals(originalCanonical)) {
+                    continue;
+                }
+
+                if (this.TryGetEntry(swapped, out Entry swappedEntry)) {
+                    found++;
+                    if (verbose && found <= MaxPrintedFailures) {
+                        Console.WriteLine(
+                            "CheckColorSwapDuplicates: entry ({0} pieces, turn={1}, pass={2}) " +
+                            "has color-swapped duplicate ({3} pieces, turn={4}, pass={5})",
+                            entry.State.OccupiedSquareCount,
+                            entry.State.Turn == OthelloNode.BLACK ? "Black" : "White",
+                            entry.State.Pass,
+                            swappedEntry.State.OccupiedSquareCount,
+                            swappedEntry.State.Turn == OthelloNode.BLACK ? "Black" : "White",
+                            swappedEntry.State.Pass);
+                        Console.WriteLine("--- Original ---");
+                        entry.PrintDiagnostic();
+                        Console.WriteLine("--- Color-swapped ---");
+                        swappedEntry.PrintDiagnostic();
+                    }
+                }
+            }
+
+            // Color-symmetric duplicates are a bidirectional relation, meaning we're double-counting nodes. Correct
+            // that here.
+            return found / 2;
+        }
+
+        /// <summary>
         /// Check for orphan subtrees.
         /// </summary>
         private int CheckTree(bool verbose) {
@@ -981,6 +1026,7 @@ namespace Othello {
                 ("Pass conflation", this.CheckPassConflation(verbose)),
                 ("Missing child links", this.CheckMissingChildLinks(verbose)),
                 ("Score cache coherency", this.CheckScoreCache(verbose)),
+                ("Color-swap duplicates", this.CheckColorSwapDuplicates(verbose)),
             };
 
             Console.WriteLine();
