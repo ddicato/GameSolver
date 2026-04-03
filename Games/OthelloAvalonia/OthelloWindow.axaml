@@ -329,6 +329,7 @@
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
@@ -356,9 +357,17 @@
                     Save Playbook
                 </Button>
 
-                <Button x:Name="CheckPlaybookButton"
+                <Button x:Name="RepairPlaybookButton"
                         Grid.Row="1"
                         Grid.Column="1"
+                        Click="RepairPlaybookButton_Click">
+                    Repair Playbook
+                </Button>
+
+                <Button x:Name="CheckPlaybookButton"
+                        Grid.Row="2"
+                        Grid.Column="0"
+                        Grid.ColumnSpan="2"
                         Click="CheckPlaybookButton_Click">
                     Check Playbook
                 </Button>

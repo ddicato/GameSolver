@@ -435,6 +435,11 @@ namespace OthelloAvalonia {
             OthelloNode.WritePlaybook(PlaybookPath);
         }
 
+        private void RepairPlaybookButton_Click(object sender, RoutedEventArgs e) {
+            int repaired = OthelloNode.Playbook.RepairMissingChildLinks(verbose: true);
+            Console.WriteLine("Repaired {0} missing child link(s).", repaired);
+        }
+
         private void CheckPlaybookButton_Click(object sender, RoutedEventArgs e) {
             bool result = OthelloNode.Playbook.Check(verbose: true);
             Console.WriteLine("Playbook integrity check: {0}", result ? "PASSED" : "FAILED");

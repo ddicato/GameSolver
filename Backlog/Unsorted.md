@@ -13,6 +13,7 @@
 - Each player can load a different params and playbook file, for comparison and possibly coevolutionary learning.
 - Read config params (e.g. randomGames/selfGames/adversarialGames, memoize/explore) from a file and/or command line. Might also want to change during program execution.
 - Build a playbook visualizer.
+- **RepairMissingChildLinks placement:** Decide systematically when to call `RepairMissingChildLinks`. Currently called in `ReadPlaybook` (after deserialize, before score materialization) and exposed via the UI "Repair Playbook" button. Other candidates: before `WritePlaybook` (ensure saved state is consistent), after each batch of `AddGame` calls, after `ExtendLeaf`. Takes ~8–9s on a 24-core machine.
 
 ## Refactoring
 

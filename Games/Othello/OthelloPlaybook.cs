@@ -1,11 +1,14 @@
 ﻿using System;
 using System.Collections;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace Othello {
     // TODO: implement ICollection<OthelloNode>?
@@ -87,13 +90,13 @@ namespace Othello {
                 current.AddParent(parent);
                 parent.AddChild(current);
 
-                parent = current;
+                // Link any legal children of current that are already in the playbook.
+                // This maintains the invariant that if both A and B are in the playbook
+                // and A→B is a legal move, then A.Children contains B — even when they
+                // were added via different game paths that never played A→B directly.
+                current.LinkExistingLegalChildren();
 
-                // The first game we encounter with a SolvedScore can be a leaf node, so
-                // there is no need to continue adding children.
-                if (current.SolvedScore != null) {
-                    break;
-                }
+                parent = current;
 
                 // Solve the endgame exactly if we're close enough.
                 if (current.SolvedScore == null && current.State.EmptySquareCount <= SearchUtils.EndgameDepth) {
@@ -838,6 +841,75 @@ namespace Othello {
         }
 
         /// <summary>
+        /// Scans every entry, finds legal children that exist in the playbook but are
+        /// not linked, and adds the missing parent→child and child→parent links.
+        /// Returns the number of links added.
+        /// </summary>
+        public int RepairMissingChildLinks(bool verbose) {
+            if (verbose) {
+                Console.Write("Adding missing child links... ");
+            }
+            DateTime start = DateTime.Now;
+            int consoleLeft = Console.CursorLeft;
+            int consoleTop = Console.CursorTop;
+
+            int visited = 0;
+            int repaired = 0;
+
+            // Read phase: collect missing (parent, child) pairs in parallel.
+            // TryGetEntry and GetChildren are read-only on the entries dictionary,
+            // so no locking is needed here.
+            var missingLinks = new ConcurrentBag<(Entry Parent, Entry Child)>();
+            Entry[] entryArray = this.entries.Values.ToArray();
+            int entryCount = entryArray.Length;
+
+            Parallel.ForEach(
+                Partitioner.Create(0, entryCount),
+                new ParallelOptions { MaxDegreeOfParallelism = 8 },
+                (range, _) => {
+                    for (int i = range.Item1; i < range.Item2; i++) {
+                        Entry entry = entryArray[i];
+                        if (entry.State.IsGameOver) continue;
+                        foreach (OthelloNode legalChild in entry.State.GetChildren()) {
+                            if (this.TryGetEntry(legalChild, out Entry childEntry) &&
+                                !entry.Children.Contains(childEntry)) {
+                                missingLinks.Add((entry, childEntry));
+                            }
+                        }
+
+                        if (verbose) {
+                            int done = Interlocked.Increment(ref visited);
+                            if (entryCount >= 100 && done % (entryCount / 100) == 0) {
+                                Console.SetCursorPosition(consoleLeft, consoleTop);
+                                Console.Write("{0:#0}% ", 100.0 / entryCount * done);
+                            }
+                        }
+                    }
+                });
+
+            // Write phase: apply links serially to avoid concurrent HashSet mutations.
+            // Re-check each pair since duplicates may appear in missingLinks when the
+            // same (parent, child) pair was identified by more than one thread.
+            foreach ((Entry parent, Entry child) in missingLinks) {
+                if (!parent.Children.Contains(child)) {
+                    parent.AddChild(child);
+                    child.AddParent(parent);
+                    repaired++;
+                }
+            }
+
+            if (verbose) {
+                Console.WriteLine(
+                    "done. Visited {0} nodes and added {1} missing links in {2:0.0000} seconds.",
+                    visited,
+                    repaired,
+                    (DateTime.Now - start).TotalSeconds);
+            }
+
+            return repaired;
+        }
+
+        /// <summary>
         /// Check that legal children present in the playbook are linked as children
         /// of their parent entry. Detects missing child links where a position's
         /// legal move leads to a board that exists in the playbook but isn't connected.
@@ -1019,7 +1091,7 @@ namespace Othello {
             }
 
             private void InvalidateCachedScore() {
-                // if (this.score == null) return;
+                if (this.score == null) return;
                 this.score = null;
                 foreach (Entry entry in this.Parents) {
                     entry.InvalidateCachedScore();
@@ -1030,6 +1102,25 @@ namespace Othello {
                 this.Parents.Clear();
                 this.Children.Clear();
                 this.InvalidateCachedScore();
+            }
+
+            /// <summary>
+            /// Links any legal children of this entry that already exist in the playbook
+            /// but are not yet connected. Returns the number of links added.
+            /// </summary>
+            internal int LinkExistingLegalChildren() {
+                if (this.State.IsGameOver) return 0;
+
+                int linked = 0;
+                foreach (OthelloNode legalChild in this.State.GetChildren()) {
+                    if (this.playbook.TryGetEntry(legalChild, out Entry childEntry) &&
+                        !this.Children.Contains(childEntry)) {
+                        this.AddChild(childEntry);
+                        childEntry.AddParent(this);
+                        linked++;
+                    }
+                }
+                return linked;
             }
 
             public void AddParent(Entry parent) {

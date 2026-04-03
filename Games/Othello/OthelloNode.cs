@@ -2123,6 +2123,7 @@ namespace Othello {
 
         public static void ReadPlaybook(string path) {
             Playbook.Deserialize(path);
+            Playbook.RepairMissingChildLinks(verbose: true);
 
             // Materialize Entry.Score values so subsequent calls to Playbook.ToList()
             // (e.g., in CalculateWeights) don't trigger expensive negamax evaluation.
