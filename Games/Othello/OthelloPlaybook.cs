@@ -38,7 +38,11 @@ namespace Othello {
         }
 
         private void AddEntry(Entry entry) {
-            this.entries[OthelloNode.Canonicalize(entry.State)] = entry;
+            this.AddEntry(OthelloNode.Canonicalize(entry.State), entry);
+        }
+
+        private void AddEntry(OthelloNode canonicalKey, Entry entry) {
+            this.entries[canonicalKey] = entry;
 
             int gameStage = entry.State.OccupiedSquareCount;
             HashSet<Entry> set;
@@ -112,6 +116,10 @@ namespace Othello {
 
         public bool TryGetEntry(OthelloNode state, out Entry value) {
             return this.entries.TryGetValue(OthelloNode.Canonicalize(state), out value);
+        }
+
+        private bool TryGetEntryByCanonicalKey(OthelloNode canonicalKey, out Entry value) {
+            return this.entries.TryGetValue(canonicalKey, out value);
         }
 
         public void Clear() {
@@ -447,7 +455,36 @@ namespace Othello {
                 consoleLeft = Console.CursorLeft;
                 consoleTop = Console.CursorTop;
 
-                // Second pass - create playbook entries.
+                // Second pass - precompute canonical forms (can be parallelized later).
+                OthelloNode[] canonicalKeys = new OthelloNode[entryCount];
+                // for (int i = 0; i < entryCount; i++) {
+                //     if (i % (entryCount / 100) == 0) {
+                //         Console.SetCursorPosition(consoleLeft, consoleTop);
+                //         Console.Write("{0:#0}%", 100.0 / entryCount * i);
+                //     }
+
+                //     canonicalKeys[i] = OthelloNode.Canonicalize(states[i]);
+                // }
+                {
+                    int canonicalized = 0;
+                    Lock @lock = new();
+                    Parallel.For(0, entryCount, new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount }, i => {
+                        canonicalKeys[i] = OthelloNode.Canonicalize(states[i]);
+                        int canonicalizedSnapshot = Interlocked.Increment(ref canonicalized);
+                        if (canonicalizedSnapshot % (entryCount / 100) == 0) {
+                            lock (@lock) {
+                                Console.SetCursorPosition(consoleLeft, consoleTop);
+                                Console.Write("{0:#0}%", 100.0 / entryCount * canonicalized);
+                            }
+                        }
+                    });
+                }
+
+                Console.Write(" | ");
+                consoleLeft = Console.CursorLeft;
+                consoleTop = Console.CursorTop;
+
+                // Third pass - create playbook entries.
                 int badSolvedScores = 0;
                 int firstBadIndex = -1;
                 int? firstBadScore = null;
@@ -459,9 +496,9 @@ namespace Othello {
                     }
 
                     Entry entry;
-                    if (!this.TryGetEntry(states[i], out entry)) {
-                        entry = new Entry(this, states[i]);
-                        this.AddEntry(entry);
+                    if (!this.TryGetEntryByCanonicalKey(canonicalKeys[i], out entry)) {
+                        entry = new Entry(this, states[i], canonicalKeys[i]);
+                        this.AddEntry(canonicalKeys[i], entry);
                     }
 
                     int? solvedScore = null;
@@ -486,7 +523,7 @@ namespace Othello {
                 consoleLeft = Console.CursorLeft;
                 consoleTop = Console.CursorTop;
 
-                // Third pass - link parents and children.
+                // Fourth pass - link parents and children.
                 for (int i = 0; i < entryCount; i++) {
                     if (i % (entryCount / 100) == 0) {
                         Console.SetCursorPosition(consoleLeft, consoleTop);
@@ -865,7 +902,7 @@ namespace Othello {
 
             Parallel.ForEach(
                 Partitioner.Create(0, entryCount),
-                new ParallelOptions { MaxDegreeOfParallelism = 8 },
+                new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount },
                 (range, _) => {
                     for (int i = range.Item1; i < range.Item2; i++) {
                         Entry entry = entryArray[i];
@@ -1059,14 +1096,18 @@ namespace Othello {
             private readonly OthelloNode canonicalState;
             private readonly int cachedHashCode;
 
-            public Entry(OthelloPlaybook playbook, OthelloNode state) {
+            public Entry(OthelloPlaybook playbook, OthelloNode state)
+                : this(playbook, state, OthelloNode.Canonicalize(state)) {
+            }
+
+            internal Entry(OthelloPlaybook playbook, OthelloNode state, OthelloNode canonicalState) {
                 if (playbook == null || state == null) {
                     throw new ArgumentNullException();
                 }
 
                 this.playbook = playbook;
                 this.State = state;
-                this.canonicalState = OthelloNode.Canonicalize(state);
+                this.canonicalState = canonicalState;
                 this.cachedHashCode = this.canonicalState.GetHashCode();
             }
 
