@@ -71,6 +71,16 @@ Allocation hotspots and GC pressure — reducing object churn and unbounded grow
 
 ## Proposed Improvements
 
+### High Impact
+
+- **Replace `ulong[] board` with two `ulong` fields.**
+  Every `new OthelloNode` allocates a `ulong[2]` array on the heap (24-byte object header + 16 bytes data). With millions of nodes created per search, this is significant GC pressure. Two fields (`ulong board0, board1`) are stored inline — no allocation, no indirection, better cache locality. The existing TODO on line 18 of `OthelloNode.cs` already notes this. Touches all board access sites but is mechanical.
+  Effort: Medium (widespread but straightforward refactor).
+
+- **Replace `Dictionary<T, TableEntry>` TT with flat open-addressing hash table.**
+  The current `TranspositionTable2` uses a managed `Dictionary` keyed by `OthelloNode` (a class). Every probe and store involves `GetHashCode` virtual dispatch, `Equals` comparison, and Dictionary's internal bucket/chain traversal. A fixed-size flat array indexed by `hash % capacity` with Zobrist hashing — storing the hash, bounds, and enough board bits to verify identity — eliminates all managed overhead. One cache line per probe instead of chasing pointers. Standard approach in game engines; the existing hash function (`Mix`/`HashULong`) is already suitable as a Zobrist-style hash.
+  Effort: Medium-High (new data structure, needs collision/replacement policy).
+
 ### Medium Impact
 
 - **Pre-size heuristic dictionaries.**

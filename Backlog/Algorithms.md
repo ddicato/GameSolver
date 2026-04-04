@@ -26,13 +26,13 @@ Available since .NET 6. In `TrainSingle`, each update does a `TryGetValue` follo
 
 `Entry.Score` uses lazy recursive evaluation — each entry calls `-Children.Max(e => e.Score)` on demand. During `CalculateHeuristics`, the playbook is materialized to a list, but score evaluation still triggers recursive descent. A topological sort (leaves first) with an explicit bottom-up pass would avoid recursion depth issues and make evaluation predictable.
 
-## Bitboard Move Generation
+## ~~Bitboard Move Generation~~ *(done — moderate improvement)*
 
-`GetChildren` iterates all 64 squares with `Square[i,j]` lookups in 8-direction loops. The competitive approach for Othello is **Kogge-Stone** or **Dumb7Fill** shift-based move generation — compute all legal moves as a single `ulong` mask using parallel prefix shifts, then iterate only the set bits. This is typically 3–5x faster than square-by-square scanning, which directly translates to deeper search at the same wall-clock time.
+Added `GetLegalMovesBitboard`, `GetFlipsBitboard`, and `GetChildrenBitboard` using Dumb7Fill shift-based flooding. Replaces per-square 8-direction scalar loops with branchless shift-and-mask operations across all 64 squares in parallel.
 
-Same applies to `PotentialMobilitySpread` and `FrontierSpread` — these can be computed with a few shift-and-mask operations instead of 64-square loops.
+**Results:** ~12% wall-clock improvement on perft depth 10 (54s → 48s), well short of the theoretical 3–5x speedup for move generation alone. Profiling indicates move generation was only ~20–30% of per-node cost; the dominant costs are object allocation (`new ulong[2]` per child node) and transposition table operations (`Dictionary` hashing/probing). See [Memory.md](Memory.md) for proposed fixes to both.
 
-Unlocks fastest-first endgame ordering (see below), since computing child mobility becomes cheap.
+`PotentialMobilitySpread` and `FrontierSpread` still use 64-square loops and can be converted to shift-and-mask operations. The bitboard infrastructure also unlocks fastest-first endgame ordering (see below), since computing child mobility becomes cheap.
 
 ## Aspiration Windows in Iterative Deepening
 

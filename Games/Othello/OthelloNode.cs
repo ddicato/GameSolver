@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Numerics;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -117,6 +118,11 @@ namespace Othello {
         public static readonly ulong[,] Adjacent;
 
         public const ulong Corners = (1ul << 63) | (1ul << 56) | (1ul << 7) | 1ul;
+
+        // Column masks for preventing bit-shift wrapping in bitboard move generation.
+        // NOT_COL_A excludes column 0 (file A); NOT_COL_H excludes column 7 (file H).
+        private const ulong NOT_COL_A = 0xFEFEFEFEFEFEFEFEul;
+        private const ulong NOT_COL_H = 0x7F7F7F7F7F7F7F7Ful;
 
         static OthelloNode() {
             #region Initialize basic masks
@@ -746,127 +752,201 @@ namespace Othello {
             return unchecked((int)count);
         }
 
+        /// <summary>
+        /// Computes a bitmask of all legal moves using Dumb7Fill shift-based flooding.
+        /// For each of 8 directions, floods from self pieces through opponent pieces
+        /// (up to 6 steps), then marks empty squares one step beyond as legal moves.
+        /// </summary>
+        public static ulong GetLegalMovesBitboard(ulong self, ulong other) {
+            ulong empty = ~(self | other);
+            ulong moves = 0;
+            ulong t;
+
+            // Right (<<1), wraps prevented by NOT_COL_A
+            t = ((self << 1) & NOT_COL_A) & other;
+            t |= ((t << 1) & NOT_COL_A) & other;
+            t |= ((t << 1) & NOT_COL_A) & other;
+            t |= ((t << 1) & NOT_COL_A) & other;
+            t |= ((t << 1) & NOT_COL_A) & other;
+            t |= ((t << 1) & NOT_COL_A) & other;
+            moves |= ((t << 1) & NOT_COL_A) & empty;
+
+            // Left (>>1), wraps prevented by NOT_COL_H
+            t = ((self >> 1) & NOT_COL_H) & other;
+            t |= ((t >> 1) & NOT_COL_H) & other;
+            t |= ((t >> 1) & NOT_COL_H) & other;
+            t |= ((t >> 1) & NOT_COL_H) & other;
+            t |= ((t >> 1) & NOT_COL_H) & other;
+            t |= ((t >> 1) & NOT_COL_H) & other;
+            moves |= ((t >> 1) & NOT_COL_H) & empty;
+
+            // Down (<<8), no column wrapping possible
+            t = (self << 8) & other;
+            t |= (t << 8) & other;
+            t |= (t << 8) & other;
+            t |= (t << 8) & other;
+            t |= (t << 8) & other;
+            t |= (t << 8) & other;
+            moves |= (t << 8) & empty;
+
+            // Up (>>8), no column wrapping possible
+            t = (self >> 8) & other;
+            t |= (t >> 8) & other;
+            t |= (t >> 8) & other;
+            t |= (t >> 8) & other;
+            t |= (t >> 8) & other;
+            t |= (t >> 8) & other;
+            moves |= (t >> 8) & empty;
+
+            // Down-right (<<9), wraps prevented by NOT_COL_A
+            t = ((self << 9) & NOT_COL_A) & other;
+            t |= ((t << 9) & NOT_COL_A) & other;
+            t |= ((t << 9) & NOT_COL_A) & other;
+            t |= ((t << 9) & NOT_COL_A) & other;
+            t |= ((t << 9) & NOT_COL_A) & other;
+            t |= ((t << 9) & NOT_COL_A) & other;
+            moves |= ((t << 9) & NOT_COL_A) & empty;
+
+            // Down-left (<<7), wraps prevented by NOT_COL_H
+            t = ((self << 7) & NOT_COL_H) & other;
+            t |= ((t << 7) & NOT_COL_H) & other;
+            t |= ((t << 7) & NOT_COL_H) & other;
+            t |= ((t << 7) & NOT_COL_H) & other;
+            t |= ((t << 7) & NOT_COL_H) & other;
+            t |= ((t << 7) & NOT_COL_H) & other;
+            moves |= ((t << 7) & NOT_COL_H) & empty;
+
+            // Up-right (>>7), wraps prevented by NOT_COL_A
+            t = ((self >> 7) & NOT_COL_A) & other;
+            t |= ((t >> 7) & NOT_COL_A) & other;
+            t |= ((t >> 7) & NOT_COL_A) & other;
+            t |= ((t >> 7) & NOT_COL_A) & other;
+            t |= ((t >> 7) & NOT_COL_A) & other;
+            t |= ((t >> 7) & NOT_COL_A) & other;
+            moves |= ((t >> 7) & NOT_COL_A) & empty;
+
+            // Up-left (>>9), wraps prevented by NOT_COL_H
+            t = ((self >> 9) & NOT_COL_H) & other;
+            t |= ((t >> 9) & NOT_COL_H) & other;
+            t |= ((t >> 9) & NOT_COL_H) & other;
+            t |= ((t >> 9) & NOT_COL_H) & other;
+            t |= ((t >> 9) & NOT_COL_H) & other;
+            t |= ((t >> 9) & NOT_COL_H) & other;
+            moves |= ((t >> 9) & NOT_COL_H) & empty;
+
+            return moves;
+        }
+
+        /// <summary>
+        /// Computes the set of opponent pieces flipped by placing a piece at moveBit.
+        /// For each direction, floods from the move square through opponent pieces;
+        /// if the chain terminates at a friendly piece, those opponent pieces are flipped.
+        /// </summary>
+        public static ulong GetFlipsBitboard(ulong moveBit, ulong self, ulong other) {
+            ulong flips = 0;
+            ulong t;
+
+            // Right (<<1)
+            t = ((moveBit << 1) & NOT_COL_A) & other;
+            t |= ((t << 1) & NOT_COL_A) & other;
+            t |= ((t << 1) & NOT_COL_A) & other;
+            t |= ((t << 1) & NOT_COL_A) & other;
+            t |= ((t << 1) & NOT_COL_A) & other;
+            t |= ((t << 1) & NOT_COL_A) & other;
+            if (((t << 1) & NOT_COL_A & self) != 0) flips |= t;
+
+            // Left (>>1)
+            t = ((moveBit >> 1) & NOT_COL_H) & other;
+            t |= ((t >> 1) & NOT_COL_H) & other;
+            t |= ((t >> 1) & NOT_COL_H) & other;
+            t |= ((t >> 1) & NOT_COL_H) & other;
+            t |= ((t >> 1) & NOT_COL_H) & other;
+            t |= ((t >> 1) & NOT_COL_H) & other;
+            if (((t >> 1) & NOT_COL_H & self) != 0) flips |= t;
+
+            // Down (<<8)
+            t = (moveBit << 8) & other;
+            t |= (t << 8) & other;
+            t |= (t << 8) & other;
+            t |= (t << 8) & other;
+            t |= (t << 8) & other;
+            t |= (t << 8) & other;
+            if (((t << 8) & self) != 0) flips |= t;
+
+            // Up (>>8)
+            t = (moveBit >> 8) & other;
+            t |= (t >> 8) & other;
+            t |= (t >> 8) & other;
+            t |= (t >> 8) & other;
+            t |= (t >> 8) & other;
+            t |= (t >> 8) & other;
+            if (((t >> 8) & self) != 0) flips |= t;
+
+            // Down-right (<<9)
+            t = ((moveBit << 9) & NOT_COL_A) & other;
+            t |= ((t << 9) & NOT_COL_A) & other;
+            t |= ((t << 9) & NOT_COL_A) & other;
+            t |= ((t << 9) & NOT_COL_A) & other;
+            t |= ((t << 9) & NOT_COL_A) & other;
+            t |= ((t << 9) & NOT_COL_A) & other;
+            if (((t << 9) & NOT_COL_A & self) != 0) flips |= t;
+
+            // Down-left (<<7)
+            t = ((moveBit << 7) & NOT_COL_H) & other;
+            t |= ((t << 7) & NOT_COL_H) & other;
+            t |= ((t << 7) & NOT_COL_H) & other;
+            t |= ((t << 7) & NOT_COL_H) & other;
+            t |= ((t << 7) & NOT_COL_H) & other;
+            t |= ((t << 7) & NOT_COL_H) & other;
+            if (((t << 7) & NOT_COL_H & self) != 0) flips |= t;
+
+            // Up-right (>>7)
+            t = ((moveBit >> 7) & NOT_COL_A) & other;
+            t |= ((t >> 7) & NOT_COL_A) & other;
+            t |= ((t >> 7) & NOT_COL_A) & other;
+            t |= ((t >> 7) & NOT_COL_A) & other;
+            t |= ((t >> 7) & NOT_COL_A) & other;
+            t |= ((t >> 7) & NOT_COL_A) & other;
+            if (((t >> 7) & NOT_COL_A & self) != 0) flips |= t;
+
+            // Up-left (>>9)
+            t = ((moveBit >> 9) & NOT_COL_H) & other;
+            t |= ((t >> 9) & NOT_COL_H) & other;
+            t |= ((t >> 9) & NOT_COL_H) & other;
+            t |= ((t >> 9) & NOT_COL_H) & other;
+            t |= ((t >> 9) & NOT_COL_H) & other;
+            t |= ((t >> 9) & NOT_COL_H) & other;
+            if (((t >> 9) & NOT_COL_H & self) != 0) flips |= t;
+
+            return flips;
+        }
+
+        /// <summary>
+        /// Bitboard-based GetChildren using Dumb7Fill. Parallel implementation to the
+        /// original GetChildren for validation — computes identical results using
+        /// shift-based flooding instead of per-square directional loops.
+        /// </summary>
         public override void GetChildren(List<OthelloNode> children) {
             children.Clear();
 
             ulong self = this.board[this.turn];
             ulong other = this.board[(this.turn + 1) & 1];
-            ulong occupied = self | other;
 
-            for (int jStart = 0; jStart < 8; jStart++) {
-                for (int iStart = 0; iStart < 8; iStart++) {
-                    // Make sure the current square is unoccupied and at least one adjacent square is
-                    // occupied by the opponent.
-                    if ((Square[iStart, jStart] & occupied) != 0 ||
-                        (Adjacent[iStart, jStart] & other) == 0) {
-                        continue;
-                    }
+            ulong moves = GetLegalMovesBitboard(self, other);
 
-                    // Search left
-                    int i, j;
-                    ulong square;
-                    ulong allTraces = 0ul;
-                    ulong trace = 0ul;
-                    for (i = iStart - 1, j = jStart;
-                        i >= 0 && (other & (square = Square[i, j])) != 0;
-                        i--) {
-                        trace |= square;
-                    }
-                    if (trace != 0 && i >= 0 && (self & (square = Square[i, j])) != 0) {
-                        allTraces |= trace | square;
-                    }
+            while (moves != 0) {
+                ulong moveBit = moves & (ulong)(-(long)moves); // isolate lowest set bit
+                ulong flips = GetFlipsBitboard(moveBit, self, other);
 
-                    // Search up-left
-                    trace = 0ul;
-                    for (i = iStart - 1, j = jStart - 1;
-                        i >= 0 && j >= 0 && (other & (square = Square[i, j])) != 0;
-                        i--, j--) {
-                        trace |= square;
-                    }
-                    if (trace != 0 && i >= 0 && j >= 0 && (self & (square = Square[i, j])) != 0) {
-                        allTraces |= trace | square;
-                    }
+                children.Add(
+                    new OthelloNode(
+                        (this.turn + 1) & 1,
+                        other & ~flips,
+                        self | flips | moveBit));
 
-                    // Search down-left
-                    trace = 0ul;
-                    for (i = iStart - 1, j = jStart + 1;
-                        i >= 0 && j < 8 && (other & (square = Square[i, j])) != 0;
-                        i--, j++) {
-                        trace |= square;
-                    }
-                    if (trace != 0 && i >= 0 && j < 8 && (self & (square = Square[i, j])) != 0) {
-                        allTraces |= trace | square;
-                    }
-
-                    // Search right
-                    trace = 0ul;
-                    for (i = iStart + 1, j = jStart;
-                        i < 8 && (other & (square = Square[i, j])) != 0;
-                        i++) {
-                        trace |= square;
-                    }
-                    if (trace != 0 && i < 8 && (self & (square = Square[i, j])) != 0) {
-                        allTraces |= trace | square;
-                    }
-
-                    // Search up-right
-                    trace = 0ul;
-                    for (i = iStart + 1, j = jStart - 1;
-                        i < 8 && j >= 0 && (other & (square = Square[i, j])) != 0;
-                        i++, j--) {
-                        trace |= square;
-                    }
-                    if (trace != 0 && i < 8 && j >= 0 && (self & (square = Square[i, j])) != 0) {
-                        allTraces |= trace | square;
-                    }
-
-                    // Search down-right
-                    trace = 0ul;
-                    for (i = iStart + 1, j = jStart + 1;
-                        i < 8 && j < 8 && (other & (square = Square[i, j])) != 0;
-                        i++, j++) {
-                        trace |= square;
-                    }
-                    if (trace != 0 && i < 8 && j < 8 && (self & (square = Square[i, j])) != 0) {
-                        allTraces |= trace | square;
-                    }
-
-                    // Search up
-                    trace = 0ul;
-                    for (i = iStart, j = jStart - 1;
-                        j >= 0 && (other & (square = Square[i, j])) != 0;
-                        j--) {
-                        trace |= square;
-                    }
-                    if (trace != 0 && j >= 0 && (self & (square = Square[i, j])) != 0) {
-                        allTraces |= trace | square;
-                    }
-
-                    // Search down
-                    trace = 0ul;
-                    for (i = iStart, j = jStart + 1;
-                        j < 8 && (other & (square = Square[i, j])) != 0;
-                        j++) {
-                        trace |= square;
-                    }
-                    if (trace != 0 && j < 8 && (self & (square = Square[i, j])) != 0) {
-                        allTraces |= trace | square;
-                    }
-
-                    // If we've flipped any pieces, we have a legal move.
-                    if (allTraces != 0) {
-                        allTraces |= Square[iStart, jStart];
-                        children.Add(
-                            new OthelloNode(
-                                (this.turn + 1) & 1,
-                                other & ~allTraces,
-                                self | allTraces));
-                    }
-                }
+                moves &= moves - 1; // clear lowest set bit
             }
 
-            // If there are no legal moves, we're forced to pass. If the previous
-            // turn was a pass, then the game is over.
             if (!this.Pass && children.Count == 0) {
                 children.Add(
                     new OthelloNode(
