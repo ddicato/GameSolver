@@ -126,6 +126,16 @@ Weight recent games more heavily than old ones. The current system treats game #
 
 Train separate eval functions for opening/midgame/endgame rather than one eval keyed by piece count. The transition between tactical and positional play is sharp in Othello.
 
+## MCTS / AlphaZero-Style (Longer-Term)
+
+The existing `MonteCarlo` method is a basic random playout. A full **Monte Carlo Tree Search (MCTS)** with UCB selection would be a significant improvement over random playouts. The further step — training a neural network policy/value head and using it to guide MCTS (AlphaZero-style) — represents the state of the art for game AI.
+
+This is a fundamentally different direction from the current alpha-beta approach, so it would be a parallel experiment rather than an incremental improvement. Key considerations:
+
+- **MCTS alone** (no neural net) is a moderate project: UCB1 selection, expansion, random rollout, backpropagation. Can reuse the existing board infrastructure.
+- **AlphaZero-style** is a much larger project: requires a neural network (e.g., via TorchSharp or ONNX), self-play data generation pipeline, and training loop. The payoff is that the learned policy/value functions can surpass hand-crafted evaluation and pattern-based approaches.
+- The current pattern-based evaluation and playbook infrastructure could serve as a strong baseline for comparison, and the playbook data could potentially bootstrap neural network training.
+
 ## Numeric Features Treated as Categorical
 
 The `Features` array in `OthelloNode.cs` contains five numeric features alongside the pattern-based features:
