@@ -1510,7 +1510,7 @@ namespace Othello {
 
             Parallel.ForEach(
                 Partitioner.Create(0, entries.Count),
-                new ParallelOptions { MaxDegreeOfParallelism = 8 },
+                new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount },
                 // Thread-local initializer: create empty accumulators.
                 () => new TrainAccumulator(),
                 // Body: accumulate into thread-local dictionaries.
@@ -2226,9 +2226,11 @@ namespace Othello {
 
         #region Playbook Serialization/Deserialization
 
-        public static void ReadPlaybook(string path) {
+        public static void ReadPlaybook(string path, bool repairMissingChildLinks = false) {
             Playbook.Deserialize(path);
-            Playbook.RepairMissingChildLinks(verbose: true);
+            if (repairMissingChildLinks) {
+                Playbook.RepairMissingChildLinks(verbose: true);
+            }
 
             // Materialize Entry.Score values so subsequent calls to Playbook.ToList()
             // (e.g., in CalculateWeights) don't trigger expensive negamax evaluation.

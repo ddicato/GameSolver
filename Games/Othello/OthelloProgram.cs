@@ -134,7 +134,7 @@ namespace Othello {
 
                     // Solve endgames in parallel. Each thread gets its own player.
                     var results = new List<(OthelloNode Node, int? Score)>[batch.Count];
-                    Parallel.For(0, batch.Count, new ParallelOptions { MaxDegreeOfParallelism = 8 }, j => {
+                    Parallel.For(0, batch.Count, new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount }, j => {
                         var leaf = batch[j];
                         if (leaf.Children.Count != 0) {
                             // Gained children from another thread's ExtendLeaf (shared position).
