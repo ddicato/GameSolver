@@ -15,14 +15,14 @@ using Solver;
 
 namespace Othello {
     public class OthelloNode : TwoPlayerNode<OthelloNode> {
-        // TODO: change to SELF/OTHER and remove turn? change board[] to 2 ulong fields?
         // TODO: Remove Turn and PlayerCount?
         // TODO: replace with enum
         public const int BLACK = 0;
         public const int WHITE = 1;
 
-        private ulong[] board = new ulong[2];
-        private int turn;
+        private readonly ulong blackBoard;
+        private readonly ulong whiteBoard;
+        private readonly int turn;
 
         // True if the previous player's move was a pass.
         public bool Pass {
@@ -35,29 +35,29 @@ namespace Othello {
         }
 
         public ulong BlackBoard {
-            get { return this.board[BLACK]; }
+            get { return this.blackBoard; }
         }
 
         public ulong WhiteBoard {
-            get { return this.board[WHITE]; }
+            get { return this.whiteBoard; }
         }
 
         public ulong PlayerBoard {
-            get { return this.board[this.turn]; }
+            get { return this.turn == BLACK ? this.blackBoard : this.whiteBoard; }
         }
 
         public ulong OtherBoard {
-            get { return this.board[(this.turn + 1) & 1]; }
+            get { return this.turn == BLACK ? this.whiteBoard : this.blackBoard; }
         }
 
         public ulong Occupied {
-            get { return this.board[BLACK] | this.board[WHITE]; }
+            get { return this.blackBoard | this.whiteBoard; }
         }
 
         private OthelloNode(int turn, ulong self, ulong other, bool pass = false) {
             this.turn = turn;
-            this.board[turn] = self;
-            this.board[(turn + 1) & 1] = other;
+            this.blackBoard = turn == BLACK ? self : other;
+            this.whiteBoard = turn == BLACK ? other : self;
             this.Pass = pass;
         }
 
@@ -80,7 +80,7 @@ namespace Othello {
         // The number of pieces Black is winning by.
         public int Score {
             get {
-                return BitCount(this.board[BLACK]) - BitCount(this.board[WHITE]);
+                return BitCount(this.blackBoard) - BitCount(this.whiteBoard);
             }
         }
 
@@ -665,8 +665,8 @@ namespace Othello {
 
         public override bool Equals(OthelloNode other) {
             return this.turn == other.turn &&
-                this.board[BLACK] == other.board[BLACK] &&
-                this.board[WHITE] == other.board[WHITE];
+                this.blackBoard == other.blackBoard &&
+                this.whiteBoard == other.whiteBoard;
         }
 
         /*
@@ -691,8 +691,8 @@ namespace Othello {
 
         public override int GetHashCode() {
             return unchecked((int)HashULong(
-                (HashULong(HashSeed[this.turn] ^ this.board[BLACK]) << 32) |
-                (HashULong(this.board[WHITE]) & 0x00000000fffffffful) ));
+                (HashULong(HashSeed[this.turn] ^ this.blackBoard) << 32) |
+                (HashULong(this.whiteBoard) & 0x00000000fffffffful) ));
         }
         */
 
@@ -732,8 +732,8 @@ namespace Othello {
         public override int GetHashCode() {
             return unchecked((int)Mix(
                 HashSeed[this.turn],
-                HashULong(this.board[BLACK]),
-                HashULong(this.board[WHITE])));
+                HashULong(this.blackBoard),
+                HashULong(this.whiteBoard)));
         }
 
         #endregion
@@ -929,8 +929,8 @@ namespace Othello {
         public override void GetChildren(List<OthelloNode> children) {
             children.Clear();
 
-            ulong self = this.board[this.turn];
-            ulong other = this.board[(this.turn + 1) & 1];
+            ulong self = this.PlayerBoard;
+            ulong other = this.OtherBoard;
 
             ulong moves = GetLegalMovesBitboard(self, other);
 
@@ -951,8 +951,8 @@ namespace Othello {
                 children.Add(
                     new OthelloNode(
                         (this.turn + 1) & 1,
-                        this.board[(this.turn + 1) & 1],
-                        this.board[this.turn],
+                        this.OtherBoard,
+                        this.PlayerBoard,
                         pass: true));
             }
         }
@@ -976,20 +976,20 @@ namespace Othello {
         }
 
         public int PieceCountSpread() {
-            return BitCount(this.board[this.turn]) - BitCount(this.board[(this.turn + 1) & 1]);
+            return BitCount(this.PlayerBoard) - BitCount(this.OtherBoard);
         }
 
         public int CornerSpread() {
-            ulong self = this.board[this.turn];
-            ulong other = this.board[(this.turn + 1) & 1];
+            ulong self = this.PlayerBoard;
+            ulong other = this.OtherBoard;
 
             return BitCount(self & Corners) - BitCount(other & Corners);
         }
 
         // TODO: merge some of these functions so that we only iterate once
         public int Frontiers() {
-            ulong self = this.board[this.turn];
-            ulong occupied = self | this.board[(this.turn + 1) & 1];
+            ulong self = this.PlayerBoard;
+            ulong occupied = self | this.OtherBoard;
 
             int total = 0;
 
@@ -1008,8 +1008,8 @@ namespace Othello {
         }
 
         public int FrontierSpread() {
-            ulong self = this.board[this.turn];
-            ulong other = this.board[(this.turn + 1) & 1];
+            ulong self = this.PlayerBoard;
+            ulong other = this.OtherBoard;
             ulong occupied = self | other;
 
             int total = 0;
@@ -1141,8 +1141,8 @@ namespace Othello {
         // Potential mobility is the number of empty squares next to an opponent's piece. It provides an
         // approximation for mobility, but at a smaller performance cost.
         public int PotentialMobility() {
-            ulong other = this.board[(this.turn + 1) & 1]; // TODO: replace with property accessors everywhere
-            ulong occupied = other | this.board[this.turn];
+            ulong other = this.OtherBoard; // TODO: replace with property accessors everywhere
+            ulong occupied = other | this.PlayerBoard;
 
             int total = 0;
             for (int j = 0; j < 8; j++) {
@@ -1160,8 +1160,8 @@ namespace Othello {
         // Potential mobility is the number of empty squares next to an opponent's piece. It provides an
         // approximation for mobility, but at a smaller performance cost.
         public int PotentialMobilitySpread() {
-            ulong self = this.board[this.turn];
-            ulong other = this.board[(this.turn + 1) & 1];
+            ulong self = this.PlayerBoard;
+            ulong other = this.OtherBoard;
             ulong occupied = self | other;
 
             int total = 0;
@@ -2403,11 +2403,11 @@ namespace Othello {
                             sb.Append(' ');
                         }
                         sb.Append(
-                            (node.board[BLACK] & node.board[WHITE] & square) != 0 ?
+                            (node.blackBoard & node.whiteBoard & square) != 0 ?
                             invalid :
-                            (node.board[BLACK] & square) != 0 ?
+                            (node.blackBoard & square) != 0 ?
                             black :
-                            (node.board[WHITE] & square) != 0 ?
+                            (node.whiteBoard & square) != 0 ?
                             white :
                             blank);
                     }
