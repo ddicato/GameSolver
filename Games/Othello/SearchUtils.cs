@@ -74,6 +74,21 @@ namespace Othello {
                     searchParams.NodesEvaluated++;
                     gamma = searchParams.EvaluateEndgame(node);
                 } else {
+                    // Enhanced Transposition Cutoff: probe TT for each child before searching.
+                    // If a child's TT bounds prove a cutoff at the parent, skip the entire search.
+                    if (depth >= 3) {
+                        for (int i = 0; i < children.Count; i++) {
+                            int childMin, childMax;
+                            if (searchParams.Table.TryGetValue(children[i], out childMin, out childMax)) {
+                                if (-childMax >= beta) {
+                                    int etcScore = -childMax;
+                                    searchParams.Table.SetValue(node, etcScore, maxScore);
+                                    return etcScore;
+                                }
+                            }
+                        }
+                    }
+
                     gamma = -int.MaxValue; // used instead of int.MinValue, which isn't negatable
                     int a = alpha;
                     int cutoffIndex = -1;
@@ -163,6 +178,18 @@ namespace Othello {
                 // TODO: this was PieceCountSpread(), but the default evaluator returns PieceCountSpread() << 16.
                 gamma = searchParams.EvaluateEndgame(node);
             } else {
+                // Enhanced Transposition Cutoff: probe TT for each child before searching.
+                for (int i = 0; i < children.Count; i++) {
+                    int childMin, childMax;
+                    if (searchParams.Table.TryGetValue(children[i], out childMin, out childMax)) {
+                        if (-childMax >= beta) {
+                            int etcScore = -childMax;
+                            searchParams.Table.SetValue(node, etcScore, maxScore);
+                            return etcScore;
+                        }
+                    }
+                }
+
                 gamma = -int.MaxValue; // used instead of int.MinValue, which isn't negatable
                 int a = alpha;
                 int cutoffIndex = -1;
