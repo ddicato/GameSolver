@@ -9,8 +9,8 @@ namespace Othello {
     // TODO: Generalize this and move into GameSolver
     public static class SearchUtils {
         // TODO: Move these, as they are Othello-specific. The latter is only used in iterative deepening.
-        public const int EndgameDepth = 11;
-        public const int EndgameDepthDiff = 6;
+        public const int EndgameDepth = 14;
+        public const int EndgameDepthDiff = 8;
 
         public static int MtdF(OthelloSearchParams searchParams, OthelloNode node, int depth, int firstGuess) {
             int guess = firstGuess;

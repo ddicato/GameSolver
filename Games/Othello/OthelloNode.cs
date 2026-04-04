@@ -2232,10 +2232,15 @@ namespace Othello {
 
             // Materialize Entry.Score values so subsequent calls to Playbook.ToList()
             // (e.g., in CalculateWeights) don't trigger expensive negamax evaluation.
+            // TODO: log materializing time
+            // TODO: standardize on when to use Playbook.ToList() and when to use materialization helper
             Playbook.ToList();
         }
 
-        public static void WritePlaybook(string path) {
+        public static void WritePlaybook(string path, bool repairMissingChildLinks = false) {
+            if (repairMissingChildLinks) {
+                Playbook.RepairMissingChildLinks(verbose: true);
+            }
             Playbook.Serialize(path);
         }
 

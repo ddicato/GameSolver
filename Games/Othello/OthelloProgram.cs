@@ -253,10 +253,10 @@ namespace Othello {
             const TrainingMode selfTraining = TrainingMode.All;
             const TrainingMode adversarialTraining = TrainingMode.All;
             const bool continueRandomGames = false;
-            const int randomGames = 100;
+            const int randomGames = 0;
             const int selfGames = 50;
-            const int adversarialGames = 50;
-            const int depth = 5;
+            const int adversarialGames = 0;
+            const int depth = 10;
 
             Player<OthelloNode> p0;
             Player<OthelloNode> p1;
@@ -271,7 +271,6 @@ namespace Othello {
             OthelloNode.ReadPlaybook(PlaybookPath);
             OthelloNode.PrintPlaybookStats();
             OthelloNode.ReadHeuristics(ParamsPath);
-            OthelloNode.CalculateHeuristics();
 
             do {
                 p0 = new MtdFPlayer(1, patternEval, verbose: verbose, randomness: false);
@@ -284,16 +283,16 @@ namespace Othello {
             } while (randomGames > 0 && selfGames <= 0 && adversarialGames <= 0);
 
             while (true) {
-                p0 = new MtdFPlayer(depth, patternEval, verbose: verbose, randomness: !memoize, exploringPatterns: true, exploringPlaybook: true);
-                p1 = new MtdFPlayer(depth, patternEval, verbose: verbose, randomness: !memoize, exploringPatterns: true, exploringPlaybook: true);
+                p0 = new MtdFPlayer(depth, OthelloNode.Eval1, verbose: verbose, randomness: !memoize, exploringPatterns: true, exploringPlaybook: true);
+                p1 = new MtdFPlayer(depth, OthelloNode.Eval1, verbose: verbose, randomness: !memoize, exploringPatterns: true, exploringPlaybook: true);
                 if (memoize) {
                     p0 = new MemoPlayer(OthelloNode.Playbook, p0) { Verbose = verbose };
                     p1 = new MemoPlayer(OthelloNode.Playbook, p1) { Verbose = verbose };
                 }
                 PlayGames(p0, p1, selfGames, ref selfGamesPlayed, verbose: verbose, training: selfTraining, p1Name: "self");
 
-                p0 = new MtdFPlayer(depth, patternEval, verbose: false, randomness: !memoize, exploringPatterns: true, exploringPlaybook: true);
-                p1 = new MtdFPlayer(depth + 1, OthelloNode.Eval1, verbose: false, randomness: !memoize, exploringPatterns: true, exploringPlaybook: true);
+                p0 = new MtdFPlayer(depth, OthelloNode.Eval1, verbose: false, randomness: !memoize, exploringPatterns: true, exploringPlaybook: true);
+                p1 = new MtdFPlayer(depth, patternEval, verbose: false, randomness: !memoize, exploringPatterns: true, exploringPlaybook: true);
                 if (memoize) {
                     p0 = new MemoPlayer(OthelloNode.Playbook, p0) { Verbose = verbose };
                     p1 = new MemoPlayer(OthelloNode.Playbook, p1) { Verbose = verbose };
@@ -528,6 +527,11 @@ namespace Othello {
                         (double)totalScore / (i + 1),
                         scoreEma);
                 }
+
+                // Write playbook after every match because we're running longer games with deeper searches
+                if (trained) {
+                    OthelloNode.WritePlaybook(PlaybookPath, repairMissingChildLinks: true);
+                }
             }
 
             if (writer != null) {
@@ -548,7 +552,6 @@ namespace Othello {
 
             if (training != TrainingMode.None && games > 0) {
                 OthelloNode.PrintPlaybookStats();
-                OthelloNode.WritePlaybook(PlaybookPath);
                 OthelloNode.CalculateHeuristics();
                 OthelloNode.WriteHeuristics(ParamsPath);
 
