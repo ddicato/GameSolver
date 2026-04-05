@@ -352,6 +352,12 @@ namespace Othello {
             int lookupCount = NumTransforms * NumPatternClasses;
             var data = new List<TrainingSample>(entries.Count);
 
+            // Coverage tracking: how many configs per class are seen in training data
+            int[][] configFrequency = new int[NumPatternClasses][];
+            for (int c = 0; c < NumPatternClasses; c++) {
+                configFrequency[c] = new int[NumConfigs[c]];
+            }
+
             Console.Write("  Extracting NN training data from {0} playbook entries...", entries.Count);
             DateTime start = DateTime.Now;
 
@@ -372,8 +378,9 @@ namespace Othello {
                     sym.GetPair(s, out ulong self, out ulong other);
                     for (int c = 0; c < NumPatternClasses; c++) {
                         ulong mask = ClassMasks[c];
-                        patternIndices[s * NumPatternClasses + c] =
-                            TernaryIndex(self & mask, other & mask, mask);
+                        int idx = TernaryIndex(self & mask, other & mask, mask);
+                        patternIndices[s * NumPatternClasses + c] = idx;
+                        configFrequency[c][idx]++;
                     }
                 }
 
@@ -392,6 +399,29 @@ namespace Othello {
             }
 
             Console.WriteLine("done ({0:0.000}s)", (DateTime.Now - start).TotalSeconds);
+
+            // Print pattern coverage report
+            Console.WriteLine("  Pattern coverage ({0} positions × {1} symmetries = {2} lookups per class):",
+                data.Count, NumTransforms, (long)data.Count * NumTransforms);
+            for (int c = 0; c < NumPatternClasses; c++) {
+                int[] freq = configFrequency[c];
+                int seen = 0, seenOnce = 0, seenFewTimes = 0;
+                int maxFreq = 0;
+                for (int i = 0; i < freq.Length; i++) {
+                    if (freq[i] > 0) {
+                        seen++;
+                        if (freq[i] == 1) seenOnce++;
+                        else if (freq[i] <= 5) seenFewTimes++;
+                        if (freq[i] > maxFreq) maxFreq = freq[i];
+                    }
+                }
+                Console.WriteLine("    Class {0,2} ({1,2} bits, {2,6} configs): {3,6} seen ({4,5:0.0}%), " +
+                    "{5} once, {6} 2-5x, max {7}",
+                    c, MaskBitCount[c], NumConfigs[c], seen,
+                    100.0 * seen / NumConfigs[c],
+                    seenOnce, seenFewTimes, maxFreq);
+            }
+
             return data;
         }
 
