@@ -11,10 +11,12 @@ namespace Othello {
     class OthelloProgram {
         const string ParamsPath = "params.txt";
         const string PlaybookPath = "playbook.txt";
+        const string NNParamsPath = "nn-params.txt";
 
         static void Main(string[] args) {
             var options = new (string Name, Action<string[]> Action)[] {
                 ("Training (self-play loop)", TrainingMain),
+                ("Train neural network", TrainNeuralNetMain),
                 ("Benchmark (vs Adversary)", BenchmarkMain),
                 ("Check playbook integrity", CheckPlaybookIntegrityMain),
                 ("Solve playbook leaves", SolvePlaybookLeavesMain),
@@ -312,6 +314,50 @@ namespace Othello {
 
             Console.WriteLine("Press Enter to exit.");
             Console.ReadLine();
+        }
+
+        /// <summary>
+        /// Train a neural network eval from the current playbook data and save to nn-params.txt.
+        /// Loads existing nn-params.txt for warm-start if available, otherwise initializes fresh.
+        /// </summary>
+        static void TrainNeuralNetMain(string[] args) {
+            OthelloNode.ReadPlaybook(PlaybookPath);
+            OthelloNode.PrintPlaybookStats();
+            OthelloNode.ReadHeuristics(ParamsPath);
+
+            // Load existing NN (warm-start) or initialize fresh
+            OthelloNeuralNetwork nn;
+            if (File.Exists(NNParamsPath)) {
+                nn = OthelloNeuralNetwork.Load(NNParamsPath);
+                Console.WriteLine("Warm-starting from existing neural network.");
+            } else {
+                nn = new OthelloNeuralNetwork();
+                nn.InitializeWeights(Random.Shared);
+                Console.WriteLine("Initialized fresh neural network ({0} pattern classes, {1}x{2}x1).",
+                    OthelloNode.PatternClasses.Length, OthelloNeuralNetwork.AccumulatorSize,
+                    OthelloNeuralNetwork.Hidden2Size);
+            }
+
+            // Extract training data from playbook
+            const int minExamples = 500;
+            var data = nn.ExtractTrainingData();
+            if (data.Count < minExamples) {
+                Console.WriteLine("Not enough training data ({0} < {1}). Play more self-play games first.",
+                    data.Count, minExamples);
+                return;
+            }
+
+            // Train
+            var config = new TrainingConfig {
+                LearningRate = 1e-3f,
+                WeightDecay = 1e-4f,
+                MaxEpochs = 200,
+                BatchSize = 64,
+            };
+
+            Console.WriteLine("Training neural network on {0} examples...", data.Count);
+            float finalLoss = nn.Train(data, config, savePath: NNParamsPath);
+            Console.WriteLine("Training complete. Final loss = {0:0.000000}", finalLoss);
         }
 
         /// <summary>

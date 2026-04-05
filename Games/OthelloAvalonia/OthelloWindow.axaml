@@ -330,6 +330,7 @@
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
@@ -370,6 +371,20 @@
                         Grid.ColumnSpan="2"
                         Click="CheckPlaybookButton_Click">
                     Check Playbook
+                </Button>
+
+                <Button x:Name="LoadNNButton"
+                        Grid.Row="3"
+                        Grid.Column="0"
+                        Click="LoadNNButton_Click">
+                    Load NN
+                </Button>
+
+                <Button x:Name="TrainNNButton"
+                        Grid.Row="3"
+                        Grid.Column="1"
+                        Click="TrainNNButton_Click">
+                    Train NN
                 </Button>
             </Grid>
         </StackPanel>

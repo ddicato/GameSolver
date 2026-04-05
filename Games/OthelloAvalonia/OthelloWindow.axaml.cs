@@ -19,6 +19,7 @@ namespace OthelloAvalonia {
         Random,
         Pattern,
         PatternSlow,
+        NeuralNet,
         Eval0,
         Eval1,
     }
@@ -44,6 +45,10 @@ namespace OthelloAvalonia {
 
         public const string ParamsPath = "params.txt";
         public const string PlaybookPath = "playbook.txt";
+        public const string NNParamsPath = "nn-params.txt";
+        private const int MinNNTrainingExamples = 500;
+
+        private OthelloNeuralNetwork neuralNetwork;
 
         public new event PropertyChangedEventHandler PropertyChanged;
 
@@ -161,7 +166,14 @@ namespace OthelloAvalonia {
             }
         }
 
-        private static Func<OthelloNode, int> GetEvaluator(PlayerType type) {
+        private Func<OthelloNode, int> GetEvaluator(PlayerType type) {
+            if (type == PlayerType.NeuralNet) {
+                if (neuralNetwork == null) {
+                    throw new InvalidOperationException("Neural network not loaded. Load nn-params.txt first.");
+                }
+                var nn = neuralNetwork;
+                return node => nn.Evaluate(node);
+            }
             return type switch {
                 PlayerType.Pattern => node => node.PatternScore(),
                 PlayerType.PatternSlow => node => node.PatternScoreSlow(),
@@ -443,6 +455,73 @@ namespace OthelloAvalonia {
         private void CheckPlaybookButton_Click(object sender, RoutedEventArgs e) {
             bool result = OthelloNode.Playbook.Check(verbose: true);
             Console.WriteLine("Playbook integrity check: {0}", result ? "PASSED" : "FAILED");
+        }
+
+        private void LoadNNButton_Click(object sender, RoutedEventArgs e) {
+            if (!System.IO.File.Exists(NNParamsPath)) {
+                Console.WriteLine("Neural network file not found: {0}", NNParamsPath);
+                return;
+            }
+            try {
+                neuralNetwork = OthelloNeuralNetwork.Load(NNParamsPath);
+            } catch (Exception ex) {
+                Console.WriteLine("Failed to load neural network: {0}", ex.Message);
+            }
+        }
+
+        private void TrainNNButton_Click(object sender, RoutedEventArgs e) {
+            var playbookEntries = OthelloNode.Playbook?.ToList();
+            int entryCount = playbookEntries?.Count ?? 0;
+            if (entryCount < MinNNTrainingExamples) {
+                Console.WriteLine("Not enough playbook entries for NN training ({0} < {1}). " +
+                    "Play more games first.", entryCount, MinNNTrainingExamples);
+                return;
+            }
+
+            TrainNNButton.IsEnabled = false;
+            Task.Run(() => {
+                try {
+                    // Initialize or warm-start
+                    OthelloNeuralNetwork nn;
+                    if (neuralNetwork != null) {
+                        nn = neuralNetwork;
+                        Console.WriteLine("Warm-starting from current neural network.");
+                    } else if (System.IO.File.Exists(NNParamsPath)) {
+                        nn = OthelloNeuralNetwork.Load(NNParamsPath);
+                        Console.WriteLine("Warm-starting from {0}.", NNParamsPath);
+                    } else {
+                        nn = new OthelloNeuralNetwork();
+                        nn.InitializeWeights(Random.Shared);
+                        Console.WriteLine("Initialized fresh neural network ({0} pattern classes, {1}x{2}x1).",
+                            OthelloNode.PatternClasses.Length, OthelloNeuralNetwork.AccumulatorSize,
+                            OthelloNeuralNetwork.Hidden2Size);
+                    }
+
+                    var data = nn.ExtractTrainingData();
+                    if (data.Count < MinNNTrainingExamples) {
+                        Console.WriteLine("Not enough training examples ({0} < {1}).",
+                            data.Count, MinNNTrainingExamples);
+                        return;
+                    }
+
+                    var config = new TrainingConfig {
+                        LearningRate = 1e-3f,
+                        WeightDecay = 1e-4f,
+                        MaxEpochs = 200,
+                        BatchSize = 64,
+                    };
+
+                    Console.WriteLine("Training neural network on {0} examples...", data.Count);
+                    float finalLoss = nn.Train(data, config, savePath: NNParamsPath);
+                    Console.WriteLine("Training complete. Final loss = {0:0.000000}", finalLoss);
+
+                    neuralNetwork = nn;
+                } catch (Exception ex) {
+                    Console.WriteLine("NN training failed: {0}", ex.Message);
+                } finally {
+                    Dispatcher.UIThread.InvokeAsync(() => TrainNNButton.IsEnabled = true);
+                }
+            });
         }
     }
 }

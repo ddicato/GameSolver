@@ -1222,7 +1222,7 @@ namespace Othello {
 
         // TODO: rename these? (also Patterns and PatternScores). Search for "PatternSets" and "pattern sets" and delete.
         public static readonly ulong[][] PatternClasses;
-        private static readonly Dictionary<PatternClassKey, HeuristicData>[] PatternClassScores;
+        internal static readonly Dictionary<PatternClassKey, HeuristicData>[] PatternClassScores;
         private static readonly double[,] PatternClassWeights;
 
         private static readonly ulong[] Patterns;
@@ -1238,7 +1238,7 @@ namespace Othello {
         // Learned coefficients for numeric features: β[featureIndex, gameStage]
         private static readonly double[,] FeatureCoefficients;
 
-        private readonly struct PatternClassKey(int pieceCount, ulong self, ulong other) : IEquatable<PatternClassKey> {
+        internal readonly struct PatternClassKey(int pieceCount, ulong self, ulong other) : IEquatable<PatternClassKey> {
             public readonly int PieceCount = pieceCount;
             public readonly ulong Self = self;
             public readonly ulong Other = other;
@@ -1257,7 +1257,7 @@ namespace Othello {
         public static int PieceCountMin(int stage) => (stage << GameStageShift) + 1;
         public static int PieceCountMax(int stage) => Math.Min(64, (stage + 1) << GameStageShift);
 
-        private struct HeuristicData {
+        internal struct HeuristicData {
             public int Score; // TODO: rename this? Could be confused with Total[,Win,Loss]Score
             public uint Count;
             public uint WinCount;
@@ -1444,7 +1444,7 @@ namespace Othello {
 
         // Log-odds score (roughly in [-9.2,9.2]) will be stored as fixed-precision int, and as such, is multiplied by
         // this factor to preserve additional significant digits.
-        private const int ScoreMultiplier = 10000; // TODO: serialize this so it is changeable
+        internal const int ScoreMultiplier = 10000; // TODO: serialize this so it is changeable
 
         public static readonly OthelloPlaybook Playbook;
 
@@ -1588,6 +1588,12 @@ namespace Othello {
                 }
             }
         }
+
+        #region Neural Network Feature Extraction
+
+        /// <summary>
+
+        #endregion
 
         public static void CalculateWeights(bool verbose = true, double[,] warmStartWeights = null, double[,] warmStartFeatures = null) {
             var entries = Playbook?.ToList();
