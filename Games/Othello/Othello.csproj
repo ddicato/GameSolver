@@ -8,7 +8,13 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="TorchSharp" Version="0.106.0" />
+    <PackageReference Include="TorchSharp-cuda-windows" Version="0.106.0" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\..\Solver\Solver.csproj" />
   </ItemGroup>
+
 
 </Project>

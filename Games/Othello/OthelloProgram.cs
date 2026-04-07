@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 
 using Solver;
+using Tensorboard;
 
 namespace Othello {
     class OthelloProgram {
@@ -256,15 +257,12 @@ namespace Othello {
             const TrainingMode adversarialTraining = TrainingMode.All;
             const bool continueRandomGames = false;
             const int randomGames = 0;
-            const int selfGames = 50;
-            const int adversarialGames = 0;
-            const int depth = 10;
+            const int selfGames = 10;
+            const int adversarialGames = 5;
+            const int depth = 8;
 
             Player<OthelloNode> p0;
             Player<OthelloNode> p1;
-
-            // TODO: optimize CalculateWeights() and especially CalculatePatternScores()
-            Func<OthelloNode, int> patternEval = node => node.PatternScore();
 
             int randomGamesPlayed = 0;
             int selfGamesPlayed = 0;
@@ -272,10 +270,16 @@ namespace Othello {
 
             OthelloNode.ReadPlaybook(PlaybookPath);
             OthelloNode.PrintPlaybookStats();
-            OthelloNode.ReadHeuristics(ParamsPath);
+
+            if (!File.Exists(NNParamsPath)) {
+                Console.WriteLine("Neural network file not found: {0}", NNParamsPath);
+                return;
+            }
+            OthelloNeuralNetwork nn = OthelloNeuralNetwork.Load(NNParamsPath);
+            Console.WriteLine("Warm-starting from existing neural network.");
 
             do {
-                p0 = new MtdFPlayer(1, patternEval, verbose: verbose, randomness: false);
+                p0 = new MtdFPlayer(1, nn.Evaluate, verbose: verbose, randomness: false);
                 p1 = new RandomPlayer() { Verbose = verbose };
                 if (memoize) {
                     p0 = new MemoPlayer(OthelloNode.Playbook, p0) { Verbose = verbose };
@@ -285,24 +289,24 @@ namespace Othello {
             } while (randomGames > 0 && selfGames <= 0 && adversarialGames <= 0);
 
             while (true) {
-                p0 = new MtdFPlayer(depth, OthelloNode.Eval1, verbose: verbose, randomness: !memoize, exploringPatterns: true, exploringPlaybook: true);
-                p1 = new MtdFPlayer(depth, OthelloNode.Eval1, verbose: verbose, randomness: !memoize, exploringPatterns: true, exploringPlaybook: true);
+                p0 = new MtdFPlayer(depth, nn.Evaluate, verbose: verbose, randomness: !memoize, exploringPatterns: true, exploringPlaybook: true);
+                p1 = new MtdFPlayer(depth, nn.Evaluate, verbose: verbose, randomness: !memoize, exploringPatterns: true, exploringPlaybook: true);
                 if (memoize) {
                     p0 = new MemoPlayer(OthelloNode.Playbook, p0) { Verbose = verbose };
                     p1 = new MemoPlayer(OthelloNode.Playbook, p1) { Verbose = verbose };
                 }
                 PlayGames(p0, p1, selfGames, ref selfGamesPlayed, verbose: verbose, training: selfTraining, p1Name: "self");
 
-                p0 = new MtdFPlayer(depth, OthelloNode.Eval1, verbose: false, randomness: !memoize, exploringPatterns: true, exploringPlaybook: true);
-                p1 = new MtdFPlayer(depth, patternEval, verbose: false, randomness: !memoize, exploringPatterns: true, exploringPlaybook: true);
+                p0 = new MtdFPlayer(depth, nn.Evaluate, verbose: false, randomness: !memoize, exploringPatterns: true, exploringPlaybook: true);
+                p1 = new MtdFPlayer(depth + 2, OthelloNode.Eval1, verbose: false, randomness: !memoize, exploringPatterns: true, exploringPlaybook: true);
                 if (memoize) {
                     p0 = new MemoPlayer(OthelloNode.Playbook, p0) { Verbose = verbose };
                     p1 = new MemoPlayer(OthelloNode.Playbook, p1) { Verbose = verbose };
                 }
-                PlayGames(p0, p1, adversarialGames, ref adversarialGamesPlayed, verbose: verbose, training: adversarialTraining, p1Name: "Adversary+");
+                PlayGames(p0, p1, adversarialGames, ref adversarialGamesPlayed, verbose: verbose, training: adversarialTraining, p1Name: "Adversary++");
 
                 if (continueRandomGames) {
-                    p0 = new MtdFPlayer(1, patternEval, verbose: verbose, randomness: false);
+                    p0 = new MtdFPlayer(1, nn.Evaluate, verbose: verbose, randomness: false);
                     p1 = new RandomPlayer() { Verbose = verbose };
                     if (memoize) {
                         p0 = new MemoPlayer(OthelloNode.Playbook, p0) { Verbose = verbose };
@@ -355,8 +359,8 @@ namespace Othello {
                 BatchSize = 64,
             };
 
-            Console.WriteLine("Training neural network on {0} examples...", data.Count);
-            float finalLoss = nn.Train(data, config, savePath: NNParamsPath);
+            Console.WriteLine("Training neural network on {0} examples (TorchSharp)...", data.Count);
+            float finalLoss = TorchTraining.TorchTrainer.Train(nn, data, config, savePath: NNParamsPath);
             Console.WriteLine("Training complete. Final loss = {0:0.000000}", finalLoss);
         }
 
@@ -372,6 +376,13 @@ namespace Othello {
             OthelloNode.ReadHeuristics(ParamsPath);
             OthelloNode.ReadPlaybook(PlaybookPath);
 
+            if (!File.Exists(NNParamsPath)) {
+                Console.WriteLine("Neural network file not found: {0}", NNParamsPath);
+                return;
+            }
+            OthelloNeuralNetwork nn = OthelloNeuralNetwork.Load(NNParamsPath);
+            Console.WriteLine("Warm-starting from existing neural network.");
+
             var trials = new (string Name, Func<OthelloNode, int> Eval, int Depth)[] {
                 ("Adversary (Eval1, d" + depth + ")", OthelloNode.Eval1, depth),
                 ("Adversary+ (Eval1, d" + (depth + 1) + ")", OthelloNode.Eval1, depth + 1),
@@ -381,11 +392,11 @@ namespace Othello {
                 int BlackWins, int BlackLosses, int BlackDraws, int WhiteWins, int WhiteLosses, int WhiteDraws)>();
 
             void RunTrials(string runLabel, bool useMemo) {
-                static int patternEval(OthelloNode node) => node.PatternScore();
+                var nnEval = nn.Evaluate;
                 foreach (var (name, eval, oppDepth) in trials) {
                     Console.WriteLine();
                     Console.WriteLine("========================================");
-                    Console.WriteLine("  [{0}] PatternScore (d{1}) vs {2}", runLabel, depth, name);
+                    Console.WriteLine("  [{0}] NeuralNet (d{1}) vs {2}", runLabel, depth, name);
                     Console.WriteLine("========================================");
 
                     int wins = 0, losses = 0, draws = 0, totalScore = 0;
@@ -395,7 +406,7 @@ namespace Othello {
                     var gameResults = new int[games];
                     int completed = 0;
                     Parallel.For(0, games, new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount }, i => {
-                        Player<OthelloNode> p0 = new MtdFPlayer(depth, patternEval, randomness: true);
+                        Player<OthelloNode> p0 = new MtdFPlayer(depth, nnEval, randomness: true);
                         var p1 = new MtdFPlayer(oppDepth, eval, randomness: true);
                         if (useMemo) {
                             p0 = new MemoPlayer(OthelloNode.Playbook, p0);
@@ -442,7 +453,7 @@ namespace Othello {
             // Print comparison.
             Console.WriteLine();
             Console.WriteLine("========================================");
-            Console.WriteLine("  Results: PatternScore (depth {0})", depth);
+            Console.WriteLine("  Results: NeuralNet (depth {0})", depth);
             Console.WriteLine("  ({0} games each, alternating black/white)", games);
             Console.WriteLine("========================================");
             Console.WriteLine();

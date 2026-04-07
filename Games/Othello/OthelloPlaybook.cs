@@ -367,6 +367,7 @@ namespace Othello {
         }
 
         public void Deserialize(string path) {
+            TorchTraining.TorchTrainer.EnsureNativeLoaded();
             DateTime start = DateTime.Now;
 
             StreamReader reader;

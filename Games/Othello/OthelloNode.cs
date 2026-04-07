@@ -2101,7 +2101,7 @@ namespace Othello {
                 }
 
                 reader = new StreamReader(path);
-                Console.Write("Loading evaluation parameters...");
+                Console.WriteLine("Loading evaluation parameters...");
             } catch {
                 Console.WriteLine("I/O Error.");
                 return;

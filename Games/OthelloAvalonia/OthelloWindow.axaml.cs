@@ -171,8 +171,7 @@ namespace OthelloAvalonia {
                 if (neuralNetwork == null) {
                     throw new InvalidOperationException("Neural network not loaded. Load nn-params.txt first.");
                 }
-                var nn = neuralNetwork;
-                return node => nn.Evaluate(node);
+                return neuralNetwork.Evaluate;
             }
             return type switch {
                 PlayerType.Pattern => node => node.PatternScore(),
@@ -188,16 +187,10 @@ namespace OthelloAvalonia {
 
             const bool verbose = true;
 
-            if (type == PlayerType.Random) {
-                Player<OthelloNode> rp = new RandomPlayer { Verbose = verbose };
-                if (memo) {
-                    rp = new MemoPlayer(OthelloNode.Playbook, rp) { Verbose = verbose };
-                }
-                return rp;
-            }
-
-            Player<OthelloNode> player =
-                new MtdFPlayer(depth, GetEvaluator(type), verbose: verbose, solveEndgame: true, randomness: randomness);
+            Player<OthelloNode> player = type switch {
+                PlayerType.Random => new RandomPlayer { Verbose = verbose },
+                _ => new MtdFPlayer(depth, GetEvaluator(type), verbose: verbose, solveEndgame: true, randomness: randomness)
+            };
             if (memo) {
                 player = new MemoPlayer(OthelloNode.Playbook, player) { Verbose = verbose };
             }
@@ -511,8 +504,8 @@ namespace OthelloAvalonia {
                         BatchSize = 64,
                     };
 
-                    Console.WriteLine("Training neural network on {0} examples...", data.Count);
-                    float finalLoss = nn.Train(data, config, savePath: NNParamsPath);
+                    Console.WriteLine("Training neural network on {0} examples (TorchSharp)...", data.Count);
+                    float finalLoss = Othello.TorchTraining.TorchTrainer.Train(nn, data, config, savePath: NNParamsPath);
                     Console.WriteLine("Training complete. Final loss = {0:0.000000}", finalLoss);
 
                     neuralNetwork = nn;
