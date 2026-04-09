@@ -83,8 +83,6 @@ namespace Othello.TorchTraining {
                 return float.NaN;
             }
 
-            Random rng = config.Seed.HasValue ? new Random(config.Seed.Value) : Random.Shared;
-
             // Convert training data to tensors
             Console.Write("  Converting {0} samples to tensors...", n);
             var sw = Stopwatch.StartNew();
@@ -132,11 +130,6 @@ namespace Othello.TorchTraining {
                 beta2: config.Beta2,
                 eps: config.Epsilon);
 
-            // Training loop
-            int[] indices = new int[n];
-            for (int i = 0; i < n; i++) indices[i] = i;
-
-            int totalBatches = (n + config.BatchSize - 1) / config.BatchSize;
             float lastEpochLoss = float.NaN;
             var trainingStopwatch = Stopwatch.StartNew();
 
@@ -144,71 +137,34 @@ namespace Othello.TorchTraining {
                 var epochStopwatch = Stopwatch.StartNew();
                 model.train();
 
-                // Fisher-Yates shuffle
-                for (int i = n - 1; i > 0; i--) {
-                    int j = rng.Next(i + 1);
-                    (indices[i], indices[j]) = (indices[j], indices[i]);
-                }
+                // Forward + backward on full dataset
+                optimizer.zero_grad();
+                using var predictions = model.call(allPatternIndices, allNumericFeatures);
+                using var loss = nn.functional.binary_cross_entropy(predictions, allLabels);
+                loss.backward();
+                optimizer.step();
 
-                var shuffleIdx = tensor(Array.ConvertAll(indices, i => (long)i), dtype: ScalarType.Int64).to(DeviceType.CUDA);
-                var epochPatterns = allPatternIndices.index_select(0, shuffleIdx);
-                var epochNumeric = allNumericFeatures.index_select(0, shuffleIdx);
-                var epochLabels = allLabels.index_select(0, shuffleIdx);
-
-                float epochLoss = 0f;
+                // Accuracy
                 int epochCorrect = 0;
-                int lastProgressTenths = -1;
-
-                for (int batchStart = 0; batchStart < n; batchStart += config.BatchSize) {
-                    int batchEnd = Math.Min(batchStart + config.BatchSize, n);
-
-                    // Progress reporting
-                    int batchIndex = batchStart / config.BatchSize;
-                    int progressTenths = (int)((long)batchIndex * 1000 / totalBatches);
-                    if (progressTenths > lastProgressTenths) {
-                        Console.Write("\r    Epoch {0,4}: {1,5:0.0}%", epoch, progressTenths / 10.0);
-                        lastProgressTenths = progressTenths;
-                    }
-
-                    // Slice batch
-                    var batchPatterns = epochPatterns.slice(0, batchStart, batchEnd, 1);
-                    var batchNumeric = epochNumeric.slice(0, batchStart, batchEnd, 1);
-                    var batchLabels = epochLabels.slice(0, batchStart, batchEnd, 1);
-
-                    // Forward
-                    optimizer.zero_grad();
-                    var predictions = model.call(batchPatterns, batchNumeric);
-                    var loss = nn.functional.binary_cross_entropy(predictions, batchLabels);
-
-                    // Backward + update
-                    loss.backward();
-                    optimizer.step();
-
-                    // Accumulate stats
-                    float batchLoss = loss.item<float>() * (batchEnd - batchStart);
-                    epochLoss += batchLoss;
-
-                    // Accuracy (evaluated without grad)
-                    using (no_grad()) {
-                        var preds = predictions.data<float>();
-                        var labs = batchLabels.data<float>();
-                        for (int i = 0; i < batchEnd - batchStart; i++) {
-                            float pred = preds[i];
-                            float label = labs[i];
-                            bool correct;
-                            if (label > 0.5f)
-                                correct = pred > 0.5f;
-                            else if (label < 0.5f)
-                                correct = pred < 0.5f;
-                            else
-                                correct = pred >= 0.4f && pred <= 0.6f;
-                            if (correct) epochCorrect++;
-                        }
+                using (no_grad()) {
+                    var preds = predictions.data<float>();
+                    var labs = allLabels.data<float>();
+                    for (int i = 0; i < n; i++) {
+                        float pred = preds[i];
+                        float label = labs[i];
+                        bool correct;
+                        if (label > 0.5f)
+                            correct = pred > 0.5f;
+                        else if (label < 0.5f)
+                            correct = pred < 0.5f;
+                        else
+                            correct = pred >= 0.4f && pred <= 0.6f;
+                        if (correct) epochCorrect++;
                     }
                 }
 
                 epochStopwatch.Stop();
-                lastEpochLoss = epochLoss / n;
+                lastEpochLoss = loss.item<float>();
                 float accuracy = (float)epochCorrect / n * 100f;
                 double epochSeconds = epochStopwatch.Elapsed.TotalSeconds;
                 int epochsRemaining = config.MaxEpochs - epoch - 1;
@@ -221,8 +177,10 @@ namespace Othello.TorchTraining {
 
                 // Export weights and save checkpoint
                 if (savePath != null) {
+                    var saveSw = Stopwatch.StartNew();
                     model.ExportWeights(targetNN);
                     targetNN.Save(savePath, config, n, lastEpochLoss);
+                    Console.WriteLine("    Saved {0} ({1:0.000}s)", savePath, saveSw.Elapsed.TotalSeconds);
                 }
             }
 

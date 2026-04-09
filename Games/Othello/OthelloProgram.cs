@@ -285,7 +285,7 @@ namespace Othello {
                     p0 = new MemoPlayer(OthelloNode.Playbook, p0) { Verbose = verbose };
                     p1 = new MemoPlayer(OthelloNode.Playbook, p1) { Verbose = verbose };
                 }
-                PlayGames(p0, p1, randomGames, ref randomGamesPlayed, verbose, training: randomTraining, p1Name: "RandomPlayer");
+                PlayGames(p0, p1, randomGames, ref randomGamesPlayed, verbose, training: randomTraining, p1Name: "RandomPlayer", nn: nn);
             } while (randomGames > 0 && selfGames <= 0 && adversarialGames <= 0);
 
             while (true) {
@@ -295,7 +295,7 @@ namespace Othello {
                     p0 = new MemoPlayer(OthelloNode.Playbook, p0) { Verbose = verbose };
                     p1 = new MemoPlayer(OthelloNode.Playbook, p1) { Verbose = verbose };
                 }
-                PlayGames(p0, p1, selfGames, ref selfGamesPlayed, verbose: verbose, training: selfTraining, p1Name: "self");
+                PlayGames(p0, p1, selfGames, ref selfGamesPlayed, verbose: verbose, training: selfTraining, p1Name: "self", nn: nn);
 
                 p0 = new MtdFPlayer(depth, nn.Evaluate, verbose: false, randomness: !memoize, exploringPatterns: true, exploringPlaybook: true);
                 p1 = new MtdFPlayer(depth + 2, OthelloNode.Eval1, verbose: false, randomness: !memoize, exploringPatterns: true, exploringPlaybook: true);
@@ -303,7 +303,7 @@ namespace Othello {
                     p0 = new MemoPlayer(OthelloNode.Playbook, p0) { Verbose = verbose };
                     p1 = new MemoPlayer(OthelloNode.Playbook, p1) { Verbose = verbose };
                 }
-                PlayGames(p0, p1, adversarialGames, ref adversarialGamesPlayed, verbose: verbose, training: adversarialTraining, p1Name: "Adversary++");
+                PlayGames(p0, p1, adversarialGames, ref adversarialGamesPlayed, verbose: verbose, training: adversarialTraining, p1Name: "Adversary++", nn: nn);
 
                 if (continueRandomGames) {
                     p0 = new MtdFPlayer(1, nn.Evaluate, verbose: verbose, randomness: false);
@@ -312,7 +312,7 @@ namespace Othello {
                         p0 = new MemoPlayer(OthelloNode.Playbook, p0) { Verbose = verbose };
                         p1 = new MemoPlayer(OthelloNode.Playbook, p1) { Verbose = verbose };
                     }
-                    PlayGames(p0, p1, randomGames, ref randomGamesPlayed, verbose, training: randomTraining, p1Name: "RandomPlayer");
+                    PlayGames(p0, p1, randomGames, ref randomGamesPlayed, verbose, training: randomTraining, p1Name: "RandomPlayer", nn: nn);
                 }
             }
 
@@ -356,7 +356,6 @@ namespace Othello {
                 LearningRate = 1e-3f,
                 WeightDecay = 1e-4f,
                 MaxEpochs = 200,
-                BatchSize = 64,
             };
 
             Console.WriteLine("Training neural network on {0} examples (TorchSharp)...", data.Count);
@@ -485,7 +484,8 @@ namespace Othello {
             string p0Name = null,
             string p1Name = null,
             string outputLog = null,
-            int threads = 0) {
+            int threads = 0,
+            OthelloNeuralNetwork nn = null) {
             const double emaFactor = 0.96;
 
             int totalScore = 0;
@@ -494,6 +494,7 @@ namespace Othello {
             double p0WinsEma = 0.5;
             double p1WinsEma = 0.5;
             double scoreEma = 0.0;
+            var gameHistories = new List<List<(OthelloNode Node, int? Score)>>();
 
             p0Name = p0Name ?? "Player 1";
             p1Name = p1Name ?? "Player 2";
@@ -526,6 +527,7 @@ namespace Othello {
                         result < 0 && (training & TrainingMode.Loss) != TrainingMode.None ||
                         result == 0 && (training & TrainingMode.Draw) != TrainingMode.None) {
                             OthelloNode.TrainPlaybook(gameHistory);
+                            gameHistories.Add(new List<(OthelloNode, int?)>(gameHistory));
                             trained = true;
                     }
                 } else {
@@ -534,6 +536,7 @@ namespace Othello {
                         result < 0 && (training & TrainingMode.Win) != TrainingMode.None ||
                         result == 0 && (training & TrainingMode.Draw) != TrainingMode.None) {
                             OthelloNode.TrainPlaybook(gameHistory);
+                            gameHistories.Add(new List<(OthelloNode, int?)>(gameHistory));
                             trained = true;
                     }
 
@@ -607,11 +610,10 @@ namespace Othello {
 
             gamesPlayed += games;
 
-            if (training != TrainingMode.None && games > 0) {
+            if (nn != null && gameHistories.Count > 0) {
                 OthelloNode.PrintPlaybookStats();
-                OthelloNode.CalculateHeuristics();
-                OthelloNode.WriteHeuristics(ParamsPath);
-
+                var config = new TrainingConfig { MaxEpochs = 5 };
+                nn.FineTune(gameHistories, config, savePath: NNParamsPath);
                 Console.WriteLine();
             }
 

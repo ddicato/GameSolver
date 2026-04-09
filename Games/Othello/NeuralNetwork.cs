@@ -12,7 +12,6 @@ namespace Othello {
         public float Beta2 = 0.999f;
         public float Epsilon = 1e-8f;
         public int MaxEpochs = 200;
-        public int BatchSize = 256;
         public int? Seed = null;
     }
 
@@ -425,6 +424,76 @@ namespace Othello {
             return data;
         }
 
+        /// <summary>
+        /// Extract training samples from a set of game histories.
+        /// Labels are derived from the game outcome from each position's current player's perspective.
+        /// </summary>
+        private List<TrainingSample> ExtractTrainingDataFromHistories(
+                IEnumerable<List<(OthelloNode Node, int? Score)>> gameHistories) {
+            int lookupCount = NumTransforms * NumPatternClasses;
+            var data = new List<TrainingSample>();
+
+            foreach (var history in gameHistories) {
+                if (history.Count < 2) continue;
+
+                int finalScore = history[^1].Node.Score; // black - white
+
+                foreach (var (node, _) in history) {
+                    if (node.IsGameOver) continue;
+
+                    int playerScore = node.Turn == OthelloNode.BLACK ? finalScore : -finalScore;
+                    float label;
+                    if (playerScore > 0) label = 0.99f;
+                    else if (playerScore < 0) label = 0.01f;
+                    else label = 0.5f;
+
+                    int[] patternIndices = new int[lookupCount];
+                    OthelloNode.BoardSymmetries sym = OthelloNode.GetBoardSymmetries(
+                        node.PlayerBoard, node.OtherBoard);
+                    for (int s = 0; s < NumTransforms; s++) {
+                        sym.GetPair(s, out ulong self, out ulong other);
+                        for (int c = 0; c < NumPatternClasses; c++) {
+                            ulong mask = ClassMasks[c];
+                            patternIndices[s * NumPatternClasses + c] =
+                                TernaryIndex(self & mask, other & mask, mask);
+                        }
+                    }
+
+                    int pieceCount = node.OccupiedSquareCount;
+                    float[] numericFeatures = new float[NumNumericFeatures];
+                    for (int i = 0; i < OthelloNode.Features.Length; i++) {
+                        numericFeatures[i] = OthelloNode.Features[i](node);
+                    }
+                    numericFeatures[OthelloNode.Features.Length] = (pieceCount - 32f) / 32f;
+
+                    data.Add(new TrainingSample {
+                        PatternIndices = patternIndices,
+                        NumericFeatures = numericFeatures,
+                        Label = label,
+                    });
+                }
+            }
+
+            return data;
+        }
+
+        /// <summary>
+        /// Fine-tune the network on positions from a set of recently played game histories.
+        /// </summary>
+        public void FineTune(
+                IEnumerable<List<(OthelloNode Node, int? Score)>> gameHistories,
+                TrainingConfig config,
+                string savePath = null) {
+            Console.WriteLine("Extracting training data from game histories...");
+            var data = ExtractTrainingDataFromHistories(gameHistories);
+            if (data.Count == 0) {
+                Console.WriteLine("  No training data.");
+                return;
+            }
+            Console.WriteLine("  {0} samples extracted.", data.Count);
+            TorchTraining.TorchTrainer.Train(this, data, config, savePath);
+        }
+
         #endregion
 
         #region Serialization
@@ -439,7 +508,6 @@ namespace Othello {
             writer.WriteLine("# Beta2 {0}", config.Beta2);
             writer.WriteLine("# Epsilon {0}", config.Epsilon);
             writer.WriteLine("# MaxEpochs {0}", config.MaxEpochs);
-            writer.WriteLine("# BatchSize {0}", config.BatchSize);
             writer.WriteLine("# TrainingExamples {0}", trainingExamples);
             writer.WriteLine("# FinalLoss {0:R}", finalLoss);
             writer.WriteLine();

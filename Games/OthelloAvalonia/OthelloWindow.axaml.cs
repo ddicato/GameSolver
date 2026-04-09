@@ -501,7 +501,6 @@ namespace OthelloAvalonia {
                         LearningRate = 1e-3f,
                         WeightDecay = 1e-4f,
                         MaxEpochs = 200,
-                        BatchSize = 64,
                     };
 
                     Console.WriteLine("Training neural network on {0} examples (TorchSharp)...", data.Count);
