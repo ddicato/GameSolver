@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -251,18 +252,15 @@ namespace Othello {
         // TODO: verbosity levels: Board, Turn, Game, GameSet, Output, None
         static void TrainingMain(string[] args) {
             const bool verbose = false;
-            const bool memoize = true;
+            const bool memoize = false;
             const TrainingMode randomTraining = TrainingMode.LossDraw;
             const TrainingMode selfTraining = TrainingMode.All;
             const TrainingMode adversarialTraining = TrainingMode.All;
             const bool continueRandomGames = false;
             const int randomGames = 0;
-            const int selfGames = 10;
-            const int adversarialGames = 5;
+            const int selfGames = 24;
+            const int adversarialGames = 12;
             const int depth = 8;
-
-            Player<OthelloNode> p0;
-            Player<OthelloNode> p1;
 
             int randomGamesPlayed = 0;
             int selfGamesPlayed = 0;
@@ -278,41 +276,35 @@ namespace Othello {
             OthelloNeuralNetwork nn = OthelloNeuralNetwork.Load(NNParamsPath);
             Console.WriteLine("Warm-starting from existing neural network.");
 
+            // Factory helpers — each call produces a fresh, thread-local player pair.
+            Func<Player<OthelloNode>> MakeP0(Func<OthelloNode, int> eval, int d, bool rand, bool explore) => () => {
+                Player<OthelloNode> p = new MtdFPlayer(d, eval, verbose: verbose, randomness: rand, exploringPatterns: explore, exploringPlaybook: explore);
+                return memoize ? new MemoPlayer(OthelloNode.Playbook, p) { Verbose = verbose } : p;
+            };
+            Func<Player<OthelloNode>> MakeRandom() => () => {
+                Player<OthelloNode> p = new RandomPlayer() { Verbose = verbose };
+                return memoize ? new MemoPlayer(OthelloNode.Playbook, p) { Verbose = verbose } : p;
+            };
+
             do {
-                p0 = new MtdFPlayer(1, nn.Evaluate, verbose: verbose, randomness: false);
-                p1 = new RandomPlayer() { Verbose = verbose };
-                if (memoize) {
-                    p0 = new MemoPlayer(OthelloNode.Playbook, p0) { Verbose = verbose };
-                    p1 = new MemoPlayer(OthelloNode.Playbook, p1) { Verbose = verbose };
-                }
-                PlayGames(p0, p1, randomGames, ref randomGamesPlayed, verbose, training: randomTraining, p1Name: "RandomPlayer", nn: nn);
+                PlayGames(
+                    MakeP0(nn.Evaluate, 1, false, false), MakeRandom(),
+                    randomGames, ref randomGamesPlayed, verbose, training: randomTraining, p1Name: "RandomPlayer", nn: nn);
             } while (randomGames > 0 && selfGames <= 0 && adversarialGames <= 0);
 
             while (true) {
-                p0 = new MtdFPlayer(depth, nn.Evaluate, verbose: verbose, randomness: !memoize, exploringPatterns: true, exploringPlaybook: true);
-                p1 = new MtdFPlayer(depth, nn.Evaluate, verbose: verbose, randomness: !memoize, exploringPatterns: true, exploringPlaybook: true);
-                if (memoize) {
-                    p0 = new MemoPlayer(OthelloNode.Playbook, p0) { Verbose = verbose };
-                    p1 = new MemoPlayer(OthelloNode.Playbook, p1) { Verbose = verbose };
-                }
-                PlayGames(p0, p1, selfGames, ref selfGamesPlayed, verbose: verbose, training: selfTraining, p1Name: "self", nn: nn);
+                PlayGames(
+                    MakeP0(nn.Evaluate, depth, !memoize, true), MakeP0(nn.Evaluate, depth, !memoize, true),
+                    selfGames, ref selfGamesPlayed, verbose: verbose, training: selfTraining, p1Name: "self", nn: nn);
 
-                p0 = new MtdFPlayer(depth, nn.Evaluate, verbose: false, randomness: !memoize, exploringPatterns: true, exploringPlaybook: true);
-                p1 = new MtdFPlayer(depth + 2, OthelloNode.Eval1, verbose: false, randomness: !memoize, exploringPatterns: true, exploringPlaybook: true);
-                if (memoize) {
-                    p0 = new MemoPlayer(OthelloNode.Playbook, p0) { Verbose = verbose };
-                    p1 = new MemoPlayer(OthelloNode.Playbook, p1) { Verbose = verbose };
-                }
-                PlayGames(p0, p1, adversarialGames, ref adversarialGamesPlayed, verbose: verbose, training: adversarialTraining, p1Name: "Adversary++", nn: nn);
+                PlayGames(
+                    MakeP0(nn.Evaluate, depth, !memoize, true), MakeP0(OthelloNode.Eval1, depth + 2, !memoize, true),
+                    adversarialGames, ref adversarialGamesPlayed, verbose: verbose, training: adversarialTraining, p1Name: "Adversary++", nn: nn);
 
                 if (continueRandomGames) {
-                    p0 = new MtdFPlayer(1, nn.Evaluate, verbose: verbose, randomness: false);
-                    p1 = new RandomPlayer() { Verbose = verbose };
-                    if (memoize) {
-                        p0 = new MemoPlayer(OthelloNode.Playbook, p0) { Verbose = verbose };
-                        p1 = new MemoPlayer(OthelloNode.Playbook, p1) { Verbose = verbose };
-                    }
-                    PlayGames(p0, p1, randomGames, ref randomGamesPlayed, verbose, training: randomTraining, p1Name: "RandomPlayer", nn: nn);
+                    PlayGames(
+                        MakeP0(nn.Evaluate, 1, false, false), MakeRandom(),
+                        randomGames, ref randomGamesPlayed, verbose, training: randomTraining, p1Name: "RandomPlayer", nn: nn);
                 }
             }
 
@@ -473,10 +465,9 @@ namespace Othello {
             Console.WriteLine();
         }
 
-        // TODO: Parallelize this. We're wasting cycles. Or, remove the threads param.
         private static void PlayGames(
-            Player<OthelloNode> p0,
-            Player<OthelloNode> p1,
+            Func<Player<OthelloNode>> p0Factory,
+            Func<Player<OthelloNode>> p1Factory,
             int games,
             ref int gamesPlayed,
             bool verbose = false,
@@ -484,7 +475,6 @@ namespace Othello {
             string p0Name = null,
             string p1Name = null,
             string outputLog = null,
-            int threads = 0,
             OthelloNeuralNetwork nn = null) {
             const double emaFactor = 0.96;
 
@@ -498,9 +488,8 @@ namespace Othello {
 
             p0Name = p0Name ?? "Player 1";
             p1Name = p1Name ?? "Player 2";
-            if (threads < 1) {
-                threads = Environment.ProcessorCount;
-            }
+
+            if (games <= 0) return;
 
             StreamWriter writer = null;
             if (outputLog != null) {
@@ -510,38 +499,72 @@ namespace Othello {
                 } catch { }
             }
 
-            for (int i = 0; i < games; i++) {
-                if (i > 0) {
-                    Console.WriteLine();
-                }
-                Console.WriteLine("Game {0} of {1}", i + 1, games);
+            // Play all games in parallel, collecting results.
+            var gameResults = new int[games];
+            var gameHistoriesArr = new List<(OthelloNode Node, int? Score)>[games];
+            var gameTimes = new double[games];
+            int completed = 0;
+            var roundStopwatch = Stopwatch.StartNew();
 
-                int playbookCount = OthelloNode.PlaybookCount;
-                bool trained = false;
+            Parallel.For(0, games, new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount }, i => {
+                var tp0 = p0Factory();
+                var tp1 = p1Factory();
+                var history = new List<(OthelloNode Node, int? Score)>();
+                var sw = Stopwatch.StartNew();
 
                 int result;
-                var gameHistory = new List<(OthelloNode Node, int? Score)>();
                 if ((i & 1) == 0) {
-                    result = GameLoop(p0, p0Name, p1, p1Name, gameHistory, verbose, training);
-                    if (result > 0 && (training & TrainingMode.Win) != TrainingMode.None ||
-                        result < 0 && (training & TrainingMode.Loss) != TrainingMode.None ||
-                        result == 0 && (training & TrainingMode.Draw) != TrainingMode.None) {
-                            OthelloNode.TrainPlaybook(gameHistory);
-                            gameHistories.Add(new List<(OthelloNode, int?)>(gameHistory));
-                            trained = true;
-                    }
+                    result = GameLoop(tp0, p0Name, tp1, p1Name, history, verbose, training, quiet: true);
                 } else {
-                    result = GameLoop(p1, p1Name, p0, p0Name, gameHistory, verbose, training);
-                    if (result > 0 && (training & TrainingMode.Loss) != TrainingMode.None ||
-                        result < 0 && (training & TrainingMode.Win) != TrainingMode.None ||
-                        result == 0 && (training & TrainingMode.Draw) != TrainingMode.None) {
-                            OthelloNode.TrainPlaybook(gameHistory);
-                            gameHistories.Add(new List<(OthelloNode, int?)>(gameHistory));
-                            trained = true;
-                    }
+                    result = GameLoop(tp1, p1Name, tp0, p0Name, history, verbose, training, quiet: true);
+                }
+                sw.Stop();
 
-                    // We want to display the result from p0's point of view.
-                    result = -result;
+                gameResults[i] = (i & 1) == 0 ? result : -result;
+                gameHistoriesArr[i] = history;
+                gameTimes[i] = sw.Elapsed.TotalSeconds;
+
+                int n = Interlocked.Increment(ref completed);
+                double elapsed = roundStopwatch.Elapsed.TotalSeconds;
+                double avgTime = elapsed / n;
+                double eta = avgTime * (games - n);
+                Console.WriteLine(
+                    "  [{0,3}/{1}] score={2:+0;-0;0} time={3:0.0}s  ETA {4:0.0}s",
+                    n, games, gameResults[i], gameTimes[i], eta);
+            });
+
+            roundStopwatch.Stop();
+
+            // Apply training and update stats sequentially.
+            int playbookCount = OthelloNode.PlaybookCount;
+            bool anyTrained = false;
+
+            for (int i = 0; i < games; i++) {
+                int result = gameResults[i];
+                var gameHistory = gameHistoriesArr[i];
+
+                // Determine if this game should be trained (from p0's perspective).
+                bool shouldTrain;
+                if ((i & 1) == 0) {
+                    // p0 was black, result is from p0's perspective (= raw GameLoop result)
+                    int rawResult = result;
+                    shouldTrain =
+                        rawResult > 0 && (training & TrainingMode.Win) != TrainingMode.None ||
+                        rawResult < 0 && (training & TrainingMode.Loss) != TrainingMode.None ||
+                        rawResult == 0 && (training & TrainingMode.Draw) != TrainingMode.None;
+                } else {
+                    // p0 was white; raw GameLoop result was -result (p1 was black)
+                    int rawResult = -result;
+                    shouldTrain =
+                        rawResult > 0 && (training & TrainingMode.Loss) != TrainingMode.None ||
+                        rawResult < 0 && (training & TrainingMode.Win) != TrainingMode.None ||
+                        rawResult == 0 && (training & TrainingMode.Draw) != TrainingMode.None;
+                }
+
+                if (shouldTrain) {
+                    OthelloNode.TrainPlaybook(gameHistory);
+                    gameHistories.Add(new List<(OthelloNode, int?)>(gameHistory));
+                    anyTrained = true;
                 }
 
                 totalScore += result;
@@ -559,24 +582,6 @@ namespace Othello {
                     p1WinsEma *= emaFactor;
                 }
 
-                Console.WriteLine(
-                    "{3} wins: {0:00.00}% {4} wins: {1:00.00}% Average score: {2:+0.000;-0.000}",
-                    100.0 * p0Wins / (i + 1),
-                    100.0 * p1Wins / (i + 1),
-                    (double)totalScore / (i + 1),
-                    p0Name,
-                    p1Name);
-                Console.WriteLine(
-                    "Exponential moving averages: {0:00.00}% to {1:00.00}% with score {2:+0.000;-0.000}",
-                    100.0 * p0WinsEma,
-                    100.0 * p1WinsEma,
-                    scoreEma);
-                if (trained) {
-                    Console.WriteLine(
-                        "{0} new entries added to the game database.",
-                        OthelloNode.PlaybookCount - playbookCount);
-                }
-
                 if (writer != null) {
                     writer.WriteLine(
                         "{0:0.0000} {1:0.0000} {2:0.0000} {3:0.0000} {4:+00.00;-00.00} {5:+00.00;-00.00}",
@@ -587,11 +592,30 @@ namespace Othello {
                         (double)totalScore / (i + 1),
                         scoreEma);
                 }
+            }
 
-                // Write playbook after every match because we're running longer games with deeper searches
-                if (trained) {
-                    OthelloNode.WritePlaybook(PlaybookPath, repairMissingChildLinks: true);
-                }
+            Console.WriteLine();
+            Console.WriteLine(
+                "Round: {0} games in {1:0.0}s ({2:0.1}s avg, {3:0.1}s min, {4:0.1}s max)",
+                games, roundStopwatch.Elapsed.TotalSeconds,
+                gameTimes.Average(), gameTimes.Min(), gameTimes.Max());
+            Console.WriteLine(
+                "{3} wins: {0:00.00}% {4} wins: {1:00.00}% Average score: {2:+0.000;-0.000}",
+                100.0 * p0Wins / games,
+                100.0 * p1Wins / games,
+                (double)totalScore / games,
+                p0Name,
+                p1Name);
+            Console.WriteLine(
+                "Exponential moving averages: {0:00.00}% to {1:00.00}% with score {2:+0.000;-0.000}",
+                100.0 * p0WinsEma,
+                100.0 * p1WinsEma,
+                scoreEma);
+            if (anyTrained) {
+                Console.WriteLine(
+                    "{0} new entries added to the game database.",
+                    OthelloNode.PlaybookCount - playbookCount);
+                OthelloNode.WritePlaybook(PlaybookPath, repairMissingChildLinks: true);
             }
 
             if (writer != null) {

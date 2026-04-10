@@ -77,3 +77,25 @@ Thompson sampling is likely the better fit here because:
 3. The playbook already stores win/loss/draw counts per entry, which map directly to a Beta distribution posterior — minimal new state needed
 
 UCB is the simpler starting point if you want to prototype quickly. Thompson sampling is worth the extra complexity if the exploration budget is limited and you need to be efficient about which branches to extend.
+
+---
+
+# Parallel Self-Play Diversification
+
+With parallelized self-play, deterministic players sharing the same playbook and NN weights will play identical games, wasting all but one thread. The `Randomness` flag in MtdFPlayer is currently tied to `!memoize`, so memoized training runs produce no variation across threads.
+
+## 1. Always Enable Randomness (simplest)
+
+Decouple `randomness` from `memoize` — always pass `randomness: true` for training games. The existing exponential-decay weighted selection already provides good variation (favors the best move but can pick suboptimal ones). The coupling to `memoize` seems accidental rather than intentional.
+
+## 2. Per-Game Seeding
+
+Pass a game index or unique seed into each player factory so MtdFPlayer's `Random` field is seeded differently per game. This gives reproducible-but-distinct games across threads.
+
+## 3. Opening Diversification
+
+Force the first N moves to be random or sampled from the playbook, then switch to the normal policy. Guarantees different midgame positions even with deterministic search.
+
+## 4. Temperature-Based Selection
+
+Replace the current exponential-decay scheme with a Boltzmann/softmax distribution over move scores. Temperature can be tuned per-game or per-move (higher = more exploration). This generalizes the current randomness mechanism and provides a single knob to control the exploration/exploitation tradeoff.

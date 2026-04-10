@@ -109,21 +109,21 @@ namespace Othello.TorchTraining {
                 labelData[i] = sample.Label;
             }
 
-            var allPatternIndices = tensor(patternData, new long[] { n, lookupCount }, dtype: ScalarType.Int64).to(DeviceType.CUDA);
-            var allNumericFeatures = tensor(numericData,
+            using var allPatternIndices = tensor(patternData, new long[] { n, lookupCount }, dtype: ScalarType.Int64).to(DeviceType.CUDA);
+            using var allNumericFeatures = tensor(numericData,
                 new long[] { n, OthelloNeuralNetwork.NumNumericFeatures }).to(DeviceType.CUDA);
-            var allLabels = tensor(labelData, new long[] { n, 1 }).to(DeviceType.CUDA);
+            using var allLabels = tensor(labelData, new long[] { n, 1 }).to(DeviceType.CUDA);
 
             Console.WriteLine("done ({0:0.000}s)", sw.Elapsed.TotalSeconds);
 
             // Build model (warm-start from existing weights)
             sw.Restart();
             Console.Write("  Building TorchSharp model...");
-            var model = OthelloTorchModel.FromHandRolled(targetNN).to(DeviceType.CUDA);
+            using var model = OthelloTorchModel.FromHandRolled(targetNN).to(DeviceType.CUDA);
             Console.WriteLine("done ({0:0.000}s)", sw.Elapsed.TotalSeconds);
 
             // Optimizer
-            var optimizer = optim.Adam(model.parameters(),
+            using var optimizer = optim.Adam(model.parameters(),
                 lr: config.LearningRate,
                 weight_decay: config.WeightDecay,
                 beta1: config.Beta1,
@@ -190,6 +190,7 @@ namespace Othello.TorchTraining {
 
             // Final export
             model.ExportWeights(targetNN);
+
             return lastEpochLoss;
         }
 

@@ -7,7 +7,9 @@ using Solver;
 
 namespace Othello {
     public class RandomPlayer : Player<OthelloNode> {
-        private static readonly Random Random = new Random();
+        [ThreadStatic]
+        private static Random t_random;
+        private static Random ThreadRandom => t_random ??= new Random();
 
         private readonly OthelloSearchParams searchParams = new OthelloSearchParams(
             node => node.PieceCountSpread());
@@ -57,7 +59,7 @@ namespace Othello {
                 return best;
             }
 
-            return Random.Next(nodes.Count);
+            return ThreadRandom.Next(nodes.Count);
         }
     }
 }
